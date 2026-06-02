@@ -147,18 +147,5 @@ const notices = [
         <button class="panel-more" type="button" @click="router.push('/dashboard')">查看全部</button>
       </article>
     </section>
-
-    <section class="profile-card">
-      <div>
-        <h2>当前表模型</h2>
-        <p>外置表模型负责识别业务库结构，并分别驱动导出、比对、同步和备份范围。</p>
-      </div>
-      <div class="profile-mini-grid">
-        <div>
-          <span>业务表模型</span>
-          <strong>任务主表</strong>
-        </div>
-      </div>
-    </section>
   </div>
 </template>

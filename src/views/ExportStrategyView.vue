@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import { fetchExportPlan, listExportPlans, listTableProfiles, saveExportPlan } from '../api/config'
+import { Message, Modal } from '@arco-design/web-vue'
+import { deleteExportPlan, fetchExportPlan, listExportPlans, listTableProfiles, saveExportPlan } from '../api/config'
 import PageHero from '../components/PageHero.vue'
 import FieldLabel from '../components/FieldLabel.vue'
 
@@ -11,6 +11,11 @@ const saving = ref(false)
 const plans = ref([])
 const profiles = ref([])
 const activePlanName = ref('')
+const activePlanPath = ref('')
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewPlanName = ref('')
+const previewPlanJson = ref('')
 
 const plan = reactive({
   name: '',
@@ -79,6 +84,7 @@ async function loadPlans(preferredName = activePlanName.value) {
     if (nextName) {
       await loadPlan(nextName)
     } else {
+      activePlanPath.value = ''
       applyPlan()
     }
   } finally {
@@ -92,6 +98,8 @@ async function loadPlan(name) {
   loadingPlan.value = true
   try {
     const data = await fetchExportPlan(name)
+    const listItem = plans.value.find((item) => item.name === name)
+    activePlanPath.value = data._path || listItem?.path || ''
     applyPlan(data)
   } catch (error) {
     Message.error(error?.message || '加载导出策略失败')
@@ -122,6 +130,51 @@ async function copyJson() {
   Message.success('导出策略 JSON 已复制')
 }
 
+async function copyPreviewJson() {
+  await navigator.clipboard.writeText(previewPlanJson.value)
+  Message.success('导出策略 JSON 已复制')
+}
+
+async function previewPlan(item) {
+  if (!item?.name) return
+  previewVisible.value = true
+  previewLoading.value = true
+  previewPlanName.value = item.name
+  previewPlanJson.value = ''
+  try {
+    const data = await fetchExportPlan(item.name)
+    const cleanData = { ...data }
+    delete cleanData._fileName
+    delete cleanData._path
+    previewPlanJson.value = JSON.stringify(cleanData, null, 2)
+  } catch (error) {
+    Message.error(error?.message || '加载导出策略失败')
+    previewVisible.value = false
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function confirmDeletePlan(item) {
+  if (!item?.name) return
+  Modal.confirm({
+    title: '删除导出策略',
+    content: `确认删除导出策略配置文件「${item.name}」？`,
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    async onOk() {
+      const res = await deleteExportPlan(item.name)
+      if (res?.success === false) {
+        Message.error(res?.message || '删除导出策略失败')
+        return
+      }
+      Message.success(res?.message || '导出策略已删除')
+      const nextPreferred = item.name === activePlanName.value ? '' : activePlanName.value
+      await loadPlans(nextPreferred)
+    },
+  })
+}
+
 onMounted(() => {
   loadPlans()
 })
@@ -142,17 +195,20 @@ onMounted(() => {
         </template>
         <div class="profile-file-list">
           <a-empty v-if="plans.length === 0" description="暂无导出策略配置" />
-          <button
+          <div
             v-for="item in plans"
             :key="item.name"
-            type="button"
             class="profile-file-item"
             :class="{ active: item.name === activePlanName }"
-            @click="loadPlan(item.name)"
           >
-            <strong>{{ item.name }}</strong>
-            <span>{{ item.path }}</span>
-          </button>
+            <button type="button" class="profile-file-main" @click="loadPlan(item.name)">
+              <strong>{{ item.name }}</strong>
+            </button>
+            <div class="profile-file-actions">
+              <a-button size="mini" @click="previewPlan(item)">预览</a-button>
+              <a-button size="mini" status="danger" @click="confirmDeletePlan(item)">删除</a-button>
+            </div>
+          </div>
         </div>
       </a-card>
 
@@ -184,6 +240,13 @@ onMounted(() => {
                 </a-form-item>
               </a-col>
             </a-row>
+
+            <a-form-item>
+              <template #label>
+                <FieldLabel label="配置路径" tip="后端自动生成的导出策略配置文件路径，仅用于定位文件。" />
+              </template>
+              <a-input :model-value="activePlanPath" disabled />
+            </a-form-item>
 
             <a-row :gutter="16">
               <a-col :span="12">
@@ -244,12 +307,19 @@ onMounted(() => {
         </a-card>
       </div>
 
-      <a-card class="result-panel config-preview" title="导出策略 JSON 预览">
-        <div class="config-preview-actions">
-          <a-button size="small" @click="copyJson">复制 JSON</a-button>
-        </div>
-        <pre>{{ planJson }}</pre>
-      </a-card>
+      <a-modal
+        v-model:visible="previewVisible"
+        :title="`${previewPlanName} JSON 预览`"
+        :footer="false"
+        width="880px"
+      >
+        <a-spin :loading="previewLoading">
+          <div class="config-preview-actions">
+            <a-button size="small" @click="copyPreviewJson">复制 JSON</a-button>
+          </div>
+          <pre class="profile-json-preview">{{ previewPlanJson }}</pre>
+        </a-spin>
+      </a-modal>
     </div>
   </div>
 </template>

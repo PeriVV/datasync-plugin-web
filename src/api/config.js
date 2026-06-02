@@ -48,6 +48,14 @@ export async function saveTableProfile(name, profile) {
   return data
 }
 
+export async function deleteTableProfile(name) {
+  if (useMock) {
+    return simulate({ success: true, name })
+  }
+  const { data } = await http.delete(`/config/table-profiles/${encodeURIComponent(name)}`)
+  return data
+}
+
 export async function listExportPlans() {
   if (useMock) {
     return simulate(mockExportPlans)
@@ -79,5 +87,13 @@ export async function saveExportPlan(name, plan) {
     return simulate({ success: true, name })
   }
   const { data } = await http.put(`/config/export-plans/${encodeURIComponent(name)}`, plan)
+  return data
+}
+
+export async function deleteExportPlan(name) {
+  if (useMock) {
+    return simulate({ success: true, name })
+  }
+  const { data } = await http.delete(`/config/export-plans/${encodeURIComponent(name)}`)
   return data
 }

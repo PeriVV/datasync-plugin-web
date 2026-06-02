@@ -662,7 +662,7 @@ textarea {
 
 .config-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 430px;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -686,15 +686,28 @@ textarea {
   border-radius: 8px;
   background: #ffffff;
   color: var(--text);
-  cursor: pointer;
   padding: 10px 12px;
   text-align: left;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
 
 .profile-file-item:hover,
 .profile-file-item.active {
   border-color: #94b8ff;
   background: #f0f5ff;
+}
+
+.profile-file-main {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
 }
 
 .profile-file-item strong {
@@ -708,6 +721,12 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   word-break: break-all;
+}
+
+.profile-file-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .config-main {
@@ -766,6 +785,18 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.profile-json-preview {
+  margin: 0;
+  max-height: 62vh;
+  padding: 14px;
+  border-radius: 8px;
+  background: #111827;
+  color: #dbeafe;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .environment-layout {

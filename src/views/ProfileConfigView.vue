@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import { fetchTableProfile, listTableProfiles, saveTableProfile } from '../api/config'
+import { Message, Modal } from '@arco-design/web-vue'
+import { deleteTableProfile, fetchTableProfile, listTableProfiles, saveTableProfile } from '../api/config'
 import PageHero from '../components/PageHero.vue'
 import FieldLabel from '../components/FieldLabel.vue'
 
@@ -10,6 +10,11 @@ const loadingProfile = ref(false)
 const saving = ref(false)
 const profiles = ref([])
 const activeProfileName = ref('')
+const activeProfilePath = ref('')
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const previewProfileName = ref('')
+const previewProfileJson = ref('')
 
 const profile = reactive({
   name: '',
@@ -159,6 +164,7 @@ async function loadProfiles(preferredName = activeProfileName.value) {
     if (nextName) {
       await loadProfile(nextName)
     } else {
+      activeProfilePath.value = ''
       applyProfile()
     }
   } finally {
@@ -172,6 +178,8 @@ async function loadProfile(name) {
   loadingProfile.value = true
   try {
     const data = await fetchTableProfile(name)
+    const listItem = profiles.value.find((item) => item.name === name)
+    activeProfilePath.value = data._path || listItem?.path || ''
     applyProfile(data)
   } catch (error) {
     Message.error(error?.message || '加载表模型失败')
@@ -202,14 +210,59 @@ async function copyJson() {
   Message.success('表模型 JSON 已复制')
 }
 
-function downloadProfile() {
-  const blob = new Blob([profileJson.value], { type: 'application/json;charset=utf-8' })
+async function copyPreviewJson() {
+  await navigator.clipboard.writeText(previewProfileJson.value)
+  Message.success('表模型 JSON 已复制')
+}
+
+function downloadPreviewProfile() {
+  const blob = new Blob([previewProfileJson.value], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${profileJsonObject.value.name || 'table-profile'}.json`
+  link.download = previewProfileName.value || 'table-profile.json'
   link.click()
   URL.revokeObjectURL(url)
+}
+
+async function previewProfile(item) {
+  if (!item?.name) return
+  previewVisible.value = true
+  previewLoading.value = true
+  previewProfileName.value = item.name
+  previewProfileJson.value = ''
+  try {
+    const data = await fetchTableProfile(item.name)
+    const cleanData = { ...data }
+    delete cleanData._fileName
+    delete cleanData._path
+    previewProfileJson.value = JSON.stringify(cleanData, null, 2)
+  } catch (error) {
+    Message.error(error?.message || '加载表模型失败')
+    previewVisible.value = false
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function confirmDeleteProfile(item) {
+  if (!item?.name) return
+  Modal.confirm({
+    title: '删除表模型',
+    content: `确认删除表模型配置文件「${item.name}」？`,
+    okText: '删除',
+    okButtonProps: { status: 'danger' },
+    async onOk() {
+      const res = await deleteTableProfile(item.name)
+      if (res?.success === false) {
+        Message.error(res?.message || '删除表模型失败')
+        return
+      }
+      Message.success(res?.message || '表模型已删除')
+      const nextPreferred = item.name === activeProfileName.value ? '' : activeProfileName.value
+      await loadProfiles(nextPreferred)
+    },
+  })
 }
 
 onMounted(() => {
@@ -232,17 +285,20 @@ onMounted(() => {
         </template>
         <div class="profile-file-list">
           <a-empty v-if="profiles.length === 0" description="暂无表模型配置" />
-          <button
+          <div
             v-for="item in profiles"
             :key="item.name"
-            type="button"
             class="profile-file-item"
             :class="{ active: item.name === activeProfileName }"
-            @click="loadProfile(item.name)"
           >
-            <strong>{{ item.name }}</strong>
-            <span>{{ item.path }}</span>
-          </button>
+            <button type="button" class="profile-file-main" @click="loadProfile(item.name)">
+              <strong>{{ item.name }}</strong>
+            </button>
+            <div class="profile-file-actions">
+              <a-button size="mini" @click="previewProfile(item)">预览</a-button>
+              <a-button size="mini" status="danger" @click="confirmDeleteProfile(item)">删除</a-button>
+            </div>
+          </div>
         </div>
       </a-card>
 
@@ -273,6 +329,12 @@ onMounted(() => {
                 </a-form-item>
               </a-col>
             </a-row>
+            <a-form-item>
+              <template #label>
+                <FieldLabel label="配置路径" tip="后端自动生成的表模型配置文件路径，仅用于定位文件。" />
+              </template>
+              <a-input :model-value="activeProfilePath" disabled />
+            </a-form-item>
           </a-form>
 
           <a-tabs class="profile-tabs" default-active-key="auto">
@@ -384,13 +446,20 @@ onMounted(() => {
         </a-card>
       </div>
 
-      <a-card class="result-panel config-preview" title="表模型 JSON 预览">
-        <div class="config-preview-actions">
-          <a-button size="small" @click="copyJson">复制 JSON</a-button>
-          <a-button size="small" type="primary" @click="downloadProfile">下载表模型</a-button>
-        </div>
-        <pre>{{ profileJson }}</pre>
-      </a-card>
+      <a-modal
+        v-model:visible="previewVisible"
+        :title="`${previewProfileName} JSON 预览`"
+        :footer="false"
+        width="880px"
+      >
+        <a-spin :loading="previewLoading">
+          <div class="config-preview-actions">
+            <a-button size="small" @click="copyPreviewJson">复制 JSON</a-button>
+            <a-button size="small" type="primary" @click="downloadPreviewProfile">下载表模型</a-button>
+          </div>
+          <pre class="profile-json-preview">{{ previewProfileJson }}</pre>
+        </a-spin>
+      </a-modal>
     </div>
   </div>
 </template>
