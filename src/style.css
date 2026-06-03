@@ -1174,6 +1174,28 @@ textarea {
   margin-bottom: 10px;
 }
 
+.manual-scope-table-name {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #e5eaf3;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-picker-grid {
+  max-height: 420px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 4px 2px;
+}
+
 .attachment-cell {
   min-height: 28px;
   display: flex;
