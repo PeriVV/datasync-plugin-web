@@ -31,8 +31,8 @@ const updatedAt = computed(() =>
 
 const metrics = [
   { label: '待导出任务', value: '1', icon: IconFile, tone: 'orange' },
-  { label: '待比对任务', value: '1', icon: IconBarChart, tone: 'blue' },
-  { label: '表模型数量', value: '1', icon: IconStorage, tone: 'green' },
+  { label: '待同步任务', value: '1', icon: IconBarChart, tone: 'blue' },
+  { label: '数据库模型数量', value: '1', icon: IconStorage, tone: 'green' },
   { label: '支持能力数', value: '5', icon: IconSafe, tone: 'purple' },
   { label: '异常数量', value: '0', icon: IconExclamationCircle, tone: 'red' },
 ]
@@ -41,19 +41,18 @@ const quickEntries = [
   { label: '新增连接', icon: IconPlus, route: '/settings' },
   { label: '生成离线包', icon: IconUpload, route: '/export' },
   { label: '导入数据包', icon: IconDownload, route: '/import' },
-  { label: '执行比对', icon: IconBarChart, route: '/compare' },
-  { label: '执行同步', icon: IconRefresh, route: '/sync' },
+  { label: '比对同步', icon: IconRefresh, route: '/sync' },
   { label: '任务备份', icon: IconSafe, route: '/backup' },
-  { label: '表模型配置', icon: IconStorage, route: '/profiles' },
+  { label: '数据库模型配置', icon: IconStorage, route: '/profiles' },
   { label: '基础配置', icon: IconSettings, route: '/dashboard' },
 ]
 
 const historyTasks = [
   { type: '导出', title: '任务 1896780229075202049 离线包已生成', desc: '2026-05-09 09:30 / zy_all_new' },
-  { type: '比对', title: '任务 T-099 差异比对已完成', desc: '2026-05-08 18:20 / 增量模式' },
+  { type: '同步', title: '任务 T-099 比对预览已完成', desc: '2026-05-08 18:20 / 增量模式' },
   { type: '同步', title: '任务 T-098 在线同步已完成', desc: '2026-05-08 16:45 / 中心库到节点库' },
   { type: '备份', title: '任务 T-097 备份表已留痕', desc: '2026-05-07 11:10 / 备份批次标识' },
-  { type: '配置', title: '业务表模型校验已通过', desc: '2026-05-07 10:05 / 识别表：任务主表' },
+  { type: '配置', title: '业务数据库模型校验已通过', desc: '2026-05-07 10:05 / 识别表：任务主表' },
 ]
 
 const notices = [

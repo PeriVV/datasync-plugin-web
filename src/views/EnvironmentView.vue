@@ -16,8 +16,10 @@ import PageHero from '../components/PageHero.vue'
 import FieldLabel from '../components/FieldLabel.vue'
 
 const supportedTypes = [
-  { type: 'MYSQL', name: 'MySQL', port: 3306, user: '' },
-  { type: 'DM8', name: 'DM8', port: 5236, user: 'SYSDBA' },
+  { type: 'MYSQL', name: 'MySQL', port: 3306, user: '', databaseLabel: '数据库名' },
+  { type: 'DM8', name: 'DM8', port: 5236, user: 'SYSDBA', databaseLabel: 'Schema' },
+  { type: 'POSTGRESQL', name: 'PostgreSQL', port: 5432, user: 'postgres', databaseLabel: '数据库名' },
+  { type: 'TDENGINE', name: 'TDengine', port: 6041, user: 'root', databaseLabel: '数据库名' },
 ]
 
 const loading = ref(false)
@@ -47,11 +49,25 @@ const form = reactive({
 })
 
 const currentConnection = computed(() => connections.value.find((item) => item.id === activeId.value) || null)
+const currentTypePreset = computed(() => supportedTypes.find((item) => item.type === form.type) || supportedTypes[0])
 
 const filteredTables = computed(() => {
   const keyword = tableKeyword.value.trim().toLowerCase()
   if (!keyword) return tables.value
   return tables.value.filter((item) => tableName(item).toLowerCase().includes(keyword))
+})
+
+const tableCountText = computed(() => {
+  if (!currentConnection.value) {
+    return '未选择数据源'
+  }
+  if (tablesLoading.value) {
+    return '正在加载数据表'
+  }
+  if (!tableKeyword.value.trim()) {
+    return `当前数据源共 ${tables.value.length} 张表`
+  }
+  return `当前筛选 ${filteredTables.value.length} 张 / 共 ${tables.value.length} 张表`
 })
 
 const previewColumns = computed(() => {
@@ -68,6 +84,19 @@ const previewColumns = computed(() => {
 const previewRows = computed(() =>
   (rowsResult.value?.rows || []).map((row, index) => ({ __row_key: index, ...row })),
 )
+
+const activeTableRowText = computed(() => {
+  if (!activeTable.value) {
+    return '请选择数据表'
+  }
+  if (rowsLoading.value) {
+    return `${activeTable.value} 正在加载行数`
+  }
+  if (rowsResult.value?.total !== undefined && rowsResult.value?.total !== null) {
+    return `${activeTable.value} 共 ${rowsResult.value.total} 条数据`
+  }
+  return `${activeTable.value} 暂无行数信息`
+})
 
 watch(
   () => form.type,
@@ -116,7 +145,7 @@ function resetForm(type = 'MYSQL') {
 }
 
 function parseJdbcUrl(url = '') {
-  const match = String(url).match(/^jdbc:[a-z0-9]+:\/\/(\[[^\]]+\]|[^/?#:]+)(?::(\d+))?(?:\/([^?]*))?(?:\?(.*))?/i)
+  const match = String(url).match(/^jdbc:[a-z0-9-]+:\/\/(\[[^\]]+\]|[^/?#:]+)(?::(\d+))?(?:\/([^?]*))?(?:\?(.*))?/i)
   if (!match) return
   form.host = (match[1] || '').replace(/^\[|\]$/g, '')
   if (match[2]) form.port = Number(match[2])
@@ -124,7 +153,7 @@ function parseJdbcUrl(url = '') {
     const schema = new URLSearchParams(match[4] || '').get('SCHEMA')
     form.database = schema || ''
   } else {
-    form.database = match[3] || ''
+    form.database = decodeURIComponent(match[3] || '')
   }
 }
 
@@ -142,6 +171,14 @@ function buildJdbcUrl() {
   }
   if (!database) {
     Message.warning('请输入数据库名')
+    return
+  }
+  if (form.type === 'POSTGRESQL') {
+    form.url = `jdbc:postgresql://${host}:${form.port}/${database}`
+    return
+  }
+  if (form.type === 'TDENGINE') {
+    form.url = `jdbc:TAOS-WS://${host}:${form.port}/${database}`
     return
   }
   form.url = `jdbc:mysql://${host}:${form.port}/${database}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true`
@@ -318,7 +355,7 @@ async function loadRows() {
   if (!item || !activeTable.value) return
   rowsLoading.value = true
   try {
-    const result = await previewTableRows(item, activeTable.value, 1, 20)
+    const result = await previewTableRows(item, activeTable.value, 1, 100)
     if (result?.success === false) {
       Message.error(result.message || '读取表数据失败')
       return
@@ -339,8 +376,8 @@ onMounted(() => {
 <template>
   <div class="environment-page">
     <PageHero
-      title="数据源配置"
-      description="维护中心库、节点库、导入目标库等数据库连接，测试连通性，并查看目标库中的表和样例数据。"
+      title="数据源连接"
+      description="维护数据库连接，测试连通性，并查看目标库中的表和样例数据。"
       hint="这些连接信息会用于后续导出、导入、比对、同步和备份流程。"
     />
 
@@ -409,6 +446,7 @@ onMounted(() => {
         <a-card class="environment-card table-browser" title="数据表预览">
           <template #extra>
             <a-space size="small">
+              <span class="table-count-text">{{ tableCountText }}</span>
               <a-input-search v-model="tableKeyword" size="small" allow-clear placeholder="搜索表名" />
               <a-button size="small" :disabled="!currentConnection" :loading="tablesLoading" @click="refreshTables">
                 <template #icon><icon-refresh /></template>
@@ -433,12 +471,16 @@ onMounted(() => {
               </button>
             </div>
             <div class="table-preview">
+              <div class="table-preview-meta">
+                <strong>{{ activeTableRowText }}</strong>
+                <span v-if="rowsResult?.rows">当前预览 {{ rowsResult.rows.length }} 条</span>
+              </div>
               <a-table
                 :columns="previewColumns"
                 :data="previewRows"
                 :loading="rowsLoading"
                 :pagination="false"
-                :scroll="{ x: 900, y: 360 }"
+                :scroll="{ x: 900, y: 'calc(100vh - 468px)' }"
                 row-key="__row_key"
               />
             </div>
@@ -460,9 +502,9 @@ onMounted(() => {
           <a-col :span="12">
             <a-form-item required>
               <template #label>
-                <FieldLabel label="名称" tip="给这条连接起一个业务可识别的名字，例如中心库、节点库或导入目标库。" />
+                <FieldLabel label="名称" tip="数据源名称。" />
               </template>
-              <a-input v-model="form.name" placeholder="例如：中心库 / 节点库 / 导入目标库" />
+              <a-input v-model="form.name" placeholder="数据源" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -488,7 +530,7 @@ onMounted(() => {
           <a-col :span="12">
             <a-form-item required>
               <template #label>
-                <FieldLabel label="端口" tip="数据库监听端口。MySQL 默认 3306，DM8 默认 5236。" />
+                <FieldLabel label="端口" tip="数据库监听端口。MySQL 默认 3306，DM8 默认 5236，PostgreSQL 默认 5432，TDengine WebSocket 默认 6041。" />
               </template>
               <a-input-number v-model="form.port" :min="1" :max="65535" style="width: 100%" />
             </a-form-item>
@@ -496,9 +538,9 @@ onMounted(() => {
           <a-col :span="12">
             <a-form-item required>
               <template #label>
-                <FieldLabel label="数据库名 / Schema" tip="MySQL 填数据库名；DM8 填 Schema，生成 URL 时会写入对应参数。" />
+                <FieldLabel label="数据库名 / Schema" tip="MySQL、PostgreSQL、TDengine 填数据库名；DM8 填 Schema，生成 URL 时会写入对应参数。" />
               </template>
-              <a-input v-model="form.database" placeholder="MySQL 数据库名或 DM8 Schema" />
+              <a-input v-model="form.database" :placeholder="currentTypePreset.databaseLabel" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -539,7 +581,7 @@ onMounted(() => {
           </a-col>
         </a-row>
         <a-space>
-          <a-button @click="testCurrentForm" :loading="testing">测试连接</a-button>
+          <a-button type="primary" @click="testCurrentForm" :loading="testing">测试连接</a-button>
           <a-button type="outline" @click="resetForm(form.type)">重置</a-button>
         </a-space>
       </a-form>

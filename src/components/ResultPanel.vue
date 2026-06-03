@@ -20,7 +20,7 @@ const keyLabels = {
   success: '是否成功',
   packageName: '离线包名称',
   outputPath: '输出路径',
-  profile: '表模型',
+  profile: '数据库模型',
   manifest: '导出清单',
   generatedAt: '生成时间',
   taskIds: '任务标识列表',
@@ -40,6 +40,9 @@ const keyLabels = {
   totalTables: '表总数',
   consistentTables: '一致表数量',
   inconsistentTables: '差异表数量',
+  insertRecords: '待插入记录',
+  updateRecords: '待更新记录',
+  deleteRecords: '待删除记录',
   sourceRows: '源库行数',
   targetRows: '目标库行数',
   sourceCount: '源库行数',
@@ -91,7 +94,7 @@ function translateValue(value) {
     return '导入目标库'
   }
   if (value === 'zy_all_new') {
-    return '业务表模型'
+    return '业务数据库模型'
   }
   return value
 }

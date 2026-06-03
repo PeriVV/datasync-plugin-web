@@ -28,10 +28,10 @@ npm install
 npm run dev
 ```
 
-默认通过 Vite 代理访问后端 `/api`。后端默认地址为 `http://localhost:8080`，前端开发地址为 `http://localhost:5173/`。
+默认通过 Vite 代理访问后端 `/api`。后端默认地址为 `http://127.0.0.1:8080`，前端开发地址为 `http://localhost:5173/`。
 
 如果后端地址不是默认值，可在启动前设置：
 
 ```bash
-VITE_PROXY_TARGET=http://localhost:8080
+VITE_PROXY_TARGET=http://127.0.0.1:8080
 ```

@@ -3,7 +3,6 @@ import {
   IconUpload,
   IconDownload,
   IconStorage,
-  IconCommon,
   IconTool,
   IconSafe,
   IconSettings,
@@ -13,7 +12,7 @@ export const navigationSections = [
   {
     key: 'datasource',
     items: [
-      { key: 'settings', label: '数据源配置', icon: IconSettings, route: '/settings' },
+      { key: 'settings', label: '数据源连接', icon: IconSettings, route: '/settings' },
     ],
   },
   {
@@ -22,7 +21,7 @@ export const navigationSections = [
     icon: IconStorage,
     expanded: true,
     items: [
-      { key: 'profiles', label: '表模型配置', icon: IconStorage, route: '/profiles' },
+      { key: 'profiles', label: '数据库模型配置', icon: IconStorage, route: '/profiles' },
       { key: 'export-strategy', label: '导出策略配置', icon: IconTool, route: '/export-strategy' },
     ],
   },
@@ -42,8 +41,7 @@ export const navigationSections = [
     icon: IconSafe,
     expanded: true,
     items: [
-      { key: 'compare', label: '差异比对', icon: IconCommon, route: '/compare' },
-      { key: 'sync', label: '执行同步', icon: IconBarChart, route: '/sync' },
+      { key: 'sync', label: '比对同步', icon: IconBarChart, route: '/sync' },
       { key: 'backup', label: '任务备份', icon: IconSafe, route: '/backup' },
     ],
   },

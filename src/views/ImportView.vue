@@ -94,7 +94,7 @@ onMounted(loadOptions)
             <a-col :span="12">
               <a-form-item>
                 <template #label>
-                  <FieldLabel label="目标数据库" tip="选择已经在数据源配置中连接成功的数据库，导入会把离线包 SQL 写入这个库。" />
+                  <FieldLabel label="目标数据库" tip="选择已经在数据源连接中连接成功的数据库，导入会把离线包 SQL 写入这个库。" />
                 </template>
                 <a-select v-model="form.targetId" placeholder="请选择目标数据库">
                   <a-option v-for="item in dataSources" :key="item.id" :value="String(item.id)">

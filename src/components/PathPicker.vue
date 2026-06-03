@@ -28,6 +28,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -59,6 +63,9 @@ function onNativeChange(event) {
 }
 
 async function choosePath() {
+  if (props.disabled) {
+    return
+  }
   if (props.mode === 'directory' && 'showDirectoryPicker' in window) {
     try {
       const handle = await window.showDirectoryPicker()
@@ -95,10 +102,11 @@ async function choosePath() {
       class="path-picker-input"
       :model-value="displayValue"
       :placeholder="placeholder"
+      :disabled="disabled"
       readonly
       @click="choosePath"
     />
-    <a-button type="outline" @click="choosePath">
+    <a-button type="outline" :disabled="disabled" @click="choosePath">
       <template #icon>
         <icon-folder />
       </template>

@@ -21,9 +21,39 @@ const mockSources = [
     ok: true,
     message: '连接正常',
   },
+  {
+    id: 'dm8-sample',
+    name: 'DM8 示例库',
+    type: 'DM8',
+    url: 'jdbc:dm://127.0.0.1:5236?SCHEMA=DATASYNC_SAMPLE&LOGINMODE=4',
+    username: 'DATASYNC_SAMPLE',
+    ok: true,
+    message: '连接正常',
+  },
+  {
+    id: 'postgres',
+    name: 'PostgreSQL 测试库',
+    type: 'POSTGRESQL',
+    url: 'jdbc:postgresql://127.0.0.1:5432/datasync',
+    username: 'postgres',
+    ok: true,
+    message: '连接正常',
+  },
+  {
+    id: 'tdengine',
+    name: 'TDengine 测试库',
+    type: 'TDENGINE',
+    url: 'jdbc:TAOS-WS://127.0.0.1:6041/datasync',
+    username: 'root',
+    ok: true,
+    message: '连接正常',
+  },
 ]
 
 const mockTables = [
+  { tableName: 'DS_TASK' },
+  { tableName: 'DS_TASK_DETAIL' },
+  { tableName: 'DS_TASK_FILE' },
   { tableName: 'zy_task' },
   { tableName: 'set_calc_param' },
   { tableName: 'zy_file_new' },
@@ -117,6 +147,21 @@ export async function listTables(source) {
     return simulate(mockTables)
   }
   const { data } = await http.get(`/datasources/${normalizeType(source.type)}/tables`, {
+    params: buildParams(source),
+  })
+  return data
+}
+
+export async function listColumns(source, table) {
+  if (useMock) {
+    return simulate([
+      { columnName: 'id' },
+      { columnName: 'task_id' },
+      { columnName: 'tenant_id' },
+      { columnName: 'project_id' },
+    ])
+  }
+  const { data } = await http.get(`/datasources/${normalizeType(source.type)}/tables/${encodeURIComponent(table)}/columns`, {
     params: buildParams(source),
   })
   return data
