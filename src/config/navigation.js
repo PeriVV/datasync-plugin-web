@@ -3,26 +3,19 @@ import {
   IconUpload,
   IconDownload,
   IconStorage,
-  IconTool,
   IconSafe,
   IconSettings,
 } from '@arco-design/web-vue/es/icon'
 
 export const navigationSections = [
   {
-    key: 'datasource',
-    items: [
-      { key: 'settings', label: '数据源连接', icon: IconSettings, route: '/settings' },
-    ],
-  },
-  {
-    key: 'params',
-    title: '参数配置',
+    key: 'basic-config',
+    title: '基础配置',
     icon: IconStorage,
     expanded: true,
     items: [
-      { key: 'profiles', label: '数据库模型配置', icon: IconStorage, route: '/profiles' },
-      { key: 'export-strategy', label: '导出策略配置', icon: IconTool, route: '/export-strategy' },
+      { key: 'settings', label: '数据源连接', icon: IconSettings, route: '/settings' },
+      { key: 'profiles', label: '数据库模板配置', icon: IconStorage, route: '/profiles' },
     ],
   },
   {
@@ -42,7 +35,7 @@ export const navigationSections = [
     expanded: true,
     items: [
       { key: 'sync', label: '比对同步', icon: IconBarChart, route: '/sync' },
-      { key: 'backup', label: '任务备份', icon: IconSafe, route: '/backup' },
+      { key: 'backup', label: '业务数据备份', icon: IconSafe, route: '/backup' },
     ],
   },
 ]

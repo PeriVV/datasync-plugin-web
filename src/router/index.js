@@ -8,7 +8,6 @@ import BackupView from '../views/BackupView.vue'
 import InfoView from '../views/InfoView.vue'
 import EnvironmentView from '../views/EnvironmentView.vue'
 import ProfileConfigView from '../views/ProfileConfigView.vue'
-import ExportStrategyView from '../views/ExportStrategyView.vue'
 
 const routes = [
   {
@@ -43,21 +42,13 @@ const routes = [
       { path: 'import', name: 'import', component: ImportView, meta: { label: '离线导入' } },
       { path: 'compare', redirect: '/sync' },
       { path: 'sync', name: 'sync', component: SyncView, meta: { label: '比对同步' } },
-      { path: 'backup', name: 'backup', component: BackupView, meta: { label: '任务备份' } },
+      { path: 'backup', name: 'backup', component: BackupView, meta: { label: '业务数据备份' } },
       {
         path: 'profiles',
         name: 'profiles',
         component: ProfileConfigView,
         meta: {
-          label: '数据库模型配置',
-        },
-      },
-      {
-        path: 'export-strategy',
-        name: 'export-strategy',
-        component: ExportStrategyView,
-        meta: {
-          label: '导出策略配置',
+          label: '数据库模板配置',
         },
       },
       { path: 'config-generator', redirect: '/profiles' },

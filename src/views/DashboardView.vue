@@ -42,8 +42,8 @@ const quickEntries = [
   { label: '生成离线包', icon: IconUpload, route: '/export' },
   { label: '导入数据包', icon: IconDownload, route: '/import' },
   { label: '比对同步', icon: IconRefresh, route: '/sync' },
-  { label: '任务备份', icon: IconSafe, route: '/backup' },
-  { label: '数据库模型配置', icon: IconStorage, route: '/profiles' },
+  { label: '业务数据备份', icon: IconSafe, route: '/backup' },
+  { label: '数据库模板配置', icon: IconStorage, route: '/profiles' },
   { label: '基础配置', icon: IconSettings, route: '/dashboard' },
 ]
 

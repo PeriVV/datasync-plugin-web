@@ -50,6 +50,8 @@ export function mockCompareResult(payload) {
       ]
   const rows = tables.map((item, index) => ({
     table: item.tableName || item.table || String(item),
+    sourceTable: item.tableName || item.table || String(item),
+    targetTable: item.targetTableName || item.tableName || item.table || String(item),
     columns: item.columns || [],
     sourceCount: index + 1,
     targetCount: index === 0 ? index + 1 : index,
@@ -77,15 +79,21 @@ export function mockCompareResult(payload) {
 
 export function mockSyncResult(payload) {
   const tableCount = Array.isArray(payload.tables) ? payload.tables.length : 0
+  const rowsInserted = Math.max(tableCount, 1)
+  const rowsUpdated = payload.syncPolicy === 'INSERT_ONLY' ? 0 : tableCount
+  const rowsDeleted = ['INSERT_UPDATE_DELETE', 'MIRROR'].includes(payload.syncPolicy) ? tableCount : 0
   return {
     success: true,
     synced: true,
-    rowsWritten: Math.max(tableCount * 2, 1),
-    rowsDeleted: tableCount,
+    syncPolicy: payload.syncPolicy,
+    rowsInserted,
+    rowsUpdated,
+    rowsWritten: rowsInserted + rowsUpdated,
+    rowsDeleted,
     tables: (payload.tables || []).map((item) => item.tableName || item.table || String(item)),
     phases: [
-      { phase: '清理目标数据', status: '已完成', detail: `已删除 ${tableCount} 行` },
-      { phase: '写入同步数据', status: '已完成', detail: `已写入 ${Math.max(tableCount * 2, 1)} 行` },
+      { phase: '清理目标数据', status: rowsDeleted ? '已完成' : '已跳过', detail: `已删除 ${rowsDeleted} 行` },
+      { phase: '写入同步数据', status: '已完成', detail: `已写入 ${rowsInserted + rowsUpdated} 行` },
     ],
   }
 }
@@ -93,10 +101,12 @@ export function mockSyncResult(payload) {
 export function mockBackupResult(payload) {
   return {
     success: true,
-    backupTag: `backup_${Date.now()}`,
+    backupTag: 'BK_20260604_001',
     taskId: payload.taskId,
     rowsCopied: 14,
-    writtenTables: ['zy_task_backup', 'set_calc_param_backup', 'zy_file_new_backup'],
+    filesCopied: payload.includeAttachments ? 3 : 0,
+    backupDirectory: payload.includeAttachments ? 'D:\\tmp\\zy\\.datasync-backups\\BK_20260604_001' : null,
+    writtenTables: ['DS_TASK_BAK', 'DS_TASK_DETAIL_BAK', ...(payload.includeAttachments ? ['DS_TASK_FILE_BAK'] : [])],
     finishedAt: now(),
   }
 }
