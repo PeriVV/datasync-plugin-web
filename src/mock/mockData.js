@@ -16,6 +16,16 @@ export function mockExportResult(payload) {
     packageName: `datasync-export-${Date.now()}.zip`,
     outputPath: payload.outputPath || '未选择导出路径',
     profile: payload.profile || 'zy_all_new',
+    folderCount: 2,
+    folders: ['sql', 'files'],
+    fileCount: 8,
+    packageSize: 245760,
+    packageContents: [
+      { type: 'SQL 脚本', path: 'sql/', fileCount: 4, description: '包含汇总 SQL 和分表 SQL' },
+      { type: '附件文件', path: 'files/', fileCount: 2, description: '按数据库模板配置导出' },
+      { type: 'JSON 清单', path: 'manifest.json', fileCount: 1, description: '记录导出范围和表信息' },
+      { type: '导出日志', path: 'export.log', fileCount: 1, description: '记录导出执行过程' },
+    ],
     manifest: {
       generatedAt: now(),
       taskIds,

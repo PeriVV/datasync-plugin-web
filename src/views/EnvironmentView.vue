@@ -12,6 +12,7 @@ import {
   previewTableRows,
   testDataSource,
 } from '../api/datasource'
+import { userFacingMessage } from '../api/http'
 import PageHero from '../components/PageHero.vue'
 import FieldLabel from '../components/FieldLabel.vue'
 
@@ -269,7 +270,7 @@ async function testCurrentForm() {
   try {
     const res = await testDataSource(form.type, payload)
     if (res?.success === false) {
-      Message.error(res?.message || '连接失败')
+      Message.error(userFacingMessage(res?.message, '连接失败，请检查数据源配置'))
       return
     }
     Message.success(res?.message || '连接成功')
@@ -287,7 +288,7 @@ async function saveConnection() {
   try {
     const res = await connectDataSource(form.type, payload)
     if (res?.success === false) {
-      Message.error(res?.message || '连接失败')
+      Message.error(userFacingMessage(res?.message, '连接失败，请检查数据源配置'))
       return
     }
     Message.success(res?.message || '连接成功')
@@ -311,7 +312,7 @@ function confirmDelete() {
     async onOk() {
       const res = await deleteDataSource(item)
       if (res?.success === false) {
-        Message.error(res?.message || '删除失败')
+        Message.error(userFacingMessage(res?.message, '删除失败，请刷新后重试'))
         return
       }
       Message.success('已删除')
@@ -328,7 +329,7 @@ async function refreshTables() {
   try {
     const result = await listTables(item)
     if (Array.isArray(result) && result[0]?.error) {
-      Message.error(result[0].error)
+      Message.error(userFacingMessage(result[0].error, '数据源保存成功，但连接测试失败'))
       tables.value = []
       activeTable.value = ''
       return
@@ -357,7 +358,7 @@ async function loadRows() {
   try {
     const result = await previewTableRows(item, activeTable.value, 1, 100)
     if (result?.success === false) {
-      Message.error(result.message || '读取表数据失败')
+      Message.error(userFacingMessage(result.message, '读取表数据失败，请检查表名和连接配置'))
       return
     }
     rowsResult.value = result

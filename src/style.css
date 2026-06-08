@@ -1339,6 +1339,32 @@ textarea {
   font-size: 12px;
 }
 
+.export-running-alert,
+.export-result-panel {
+  margin-top: 18px;
+}
+
+.export-action-row {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.export-result-panel {
+  padding: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.export-result-panel .arco-result {
+  padding: 8px 0 18px;
+}
+
+.export-result-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .model-card-title strong,
 .model-card-title span {
   display: block;
@@ -1526,6 +1552,74 @@ textarea {
   margin-bottom: 6px;
 }
 
+.relation-card .relation-card-heading {
+  align-items: center;
+}
+
+.relation-card-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.relation-card .relation-card-summary strong,
+.relation-card .relation-card-summary span {
+  margin-top: 0;
+  display: inline;
+}
+
+.query-rule-table {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.query-rule-header,
+.query-rule-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) 190px minmax(260px, 1.1fr) 180px;
+  column-gap: 12px;
+  align-items: center;
+}
+
+.query-rule-header {
+  padding: 10px 12px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #e5e6eb;
+  color: #4e5969;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.query-rule-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.query-rule-row:last-child {
+  border-bottom: none;
+}
+
+.query-rule-operation {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.query-rule-operation .arco-btn {
+  min-width: 56px;
+}
+
+.query-rule-operation-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 .generated-rule {
   padding: 9px 12px;
 }
@@ -1537,18 +1631,6 @@ textarea {
 
 .generated-rule code {
   margin-left: 10px;
-}
-
-.backup-collapse {
-  margin-top: 18px;
-}
-
-.backup-map-row {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
 }
 
 .model-test-bar {
@@ -1644,6 +1726,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.condition-table-list + .relationship-example {
+  margin-top: 20px;
 }
 
 .locator-param-table {

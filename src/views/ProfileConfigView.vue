@@ -4,6 +4,7 @@ import { Message, Modal } from '@arco-design/web-vue'
 import { deleteTableProfile, fetchTableProfile, listTableProfiles, saveTableProfile } from '../api/config'
 import { previewTableProfile, testProfileLocator } from '../api/datasync'
 import { listColumns, listDataSources, listTables } from '../api/datasource'
+import { userFacingMessage } from '../api/http'
 import FieldLabel from '../components/FieldLabel.vue'
 import PageHero from '../components/PageHero.vue'
 
@@ -24,6 +25,7 @@ const profiles = ref([])
 const dataSources = ref([])
 const sourceTables = ref([])
 const columnsByTable = reactive({})
+const columnsLoadingByTable = reactive({})
 const activeProfileName = ref('')
 const activeProfilePath = ref('')
 const createProfileVisible = ref(false)
@@ -37,19 +39,24 @@ const locatorTesting = ref(false)
 const locatorTestResult = ref(null)
 const locatorTestValues = reactive({})
 
+const queryOperatorOptions = [
+  { label: '包含', value: 'LIKE' },
+  { label: '不包含', value: 'NOT LIKE' },
+  { label: '等于 (=)', value: '=' },
+  { label: '不等于 (!=)', value: '!=' },
+  { label: '不等于 (<>)', value: '<>' },
+  { label: '大于 (>)', value: '>' },
+  { label: '大于等于 (>=)', value: '>=' },
+  { label: '小于 (<)', value: '<' },
+  { label: '小于等于 (<=)', value: '<=' },
+]
+
 const createProfileForm = reactive({
   fileName: '',
   name: '任务数据模型',
   description: '用于导出、导入、同步某个任务及其相关数据',
   dataSourceId: '',
 })
-
-const contentTypeOptions = [
-  { label: '普通数据表', value: 'DATA' },
-  { label: '附件数据表', value: 'ATTACHMENT' },
-  { label: '日志表', value: 'LOG' },
-  { label: '公共字典表', value: 'DICTIONARY' },
-]
 
 const profile = reactive({
   name: '',
@@ -88,18 +95,6 @@ const filteredSourceTables = computed(() => {
 const pagedSourceTables = computed(() => {
   const start = (tablePickerPage.value - 1) * tablePickerPageSize
   return filteredSourceTables.value.slice(start, start + tablePickerPageSize)
-})
-const attachmentTableNames = computed({
-  get: () => attachmentScopes.value.map((item) => item.tableName),
-  set: (tableNames) => {
-    const selectedNames = Array.isArray(tableNames) ? tableNames : []
-    profile.autoTaskTables.forEach((row) => {
-      const enabled = selectedNames.some((name) => sameName(name, row.tableName))
-      row.fileTable = enabled
-      row.exportAttachments = enabled
-      if (enabled) loadTableColumns(row.tableName)
-    })
-  },
 })
 const conditionTables = computed(() => profile.locatorRule.query.conditionTables || [])
 const locatorParams = computed(() => conditionTables.value.flatMap((table) =>
@@ -194,35 +189,56 @@ function syncLegacyMainFromLocator() {
   profile.businessIdentifierName = firstParam?.label || profile.businessIdentifierName || '业务条件'
 }
 
+function normalizeRuleOperator(value) {
+  const operator = String(value || '=').toUpperCase()
+  return queryOperatorOptions.some((item) => item.value === operator) ? operator : '='
+}
+
+function generatedRuleCondition(rule) {
+  const operator = normalizeRuleOperator(rule.operator)
+  const parameter = `\${${rule.paramName}}`
+  if (operator === 'LIKE') return `${rule.field} LIKE '%${parameter}%'`
+  if (operator === 'NOT LIKE') return `${rule.field} NOT LIKE '%${parameter}%'`
+  return `${rule.field} ${operator} '${parameter}'`
+}
+
 function generatedCondition(row) {
-  if (row.contentType === 'DICTIONARY') return '1 = 1'
   const rules = Array.isArray(row.queryRules) ? row.queryRules.filter((item) => item.field && item.paramName) : []
   return rules.length
-    ? rules.map((item) => `${item.field} = '\${${item.paramName}}'`).join(' AND ')
+    ? rules.map(generatedRuleCondition).join(' AND ')
     : '请添加查询规则'
 }
 
 function toEditableScope(row = {}, mainTableName = '') {
   const parsedField = row.relationField || simpleRelationField(row.taskConditionTemplate)
   const isMain = sameName(row.tableName, mainTableName)
+  const filePathTemplate = String(row.filePathTemplate || '')
+  const templateColumnMatch = filePathTemplate.match(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}\s*$/)
+  const filePathValue = row.fileColumn || templateColumnMatch?.[1] || ''
+  const fileTable = Boolean(row.fileTable || row.contentType === 'ATTACHMENT')
   return {
     tableName: row.tableName || '',
     keyColumn: row.keyColumn || 'id',
-    contentType: row.contentType || (row.fileTable ? 'ATTACHMENT' : 'DATA'),
+    contentType: fileTable ? 'ATTACHMENT' : 'DATA',
     queryRules: Array.isArray(row.queryRules)
-      ? row.queryRules.map((item) => ({ field: item.field || '', paramName: item.paramName || '' }))
+      ? row.queryRules.map((item) => ({
+        field: item.field || '',
+        operator: normalizeRuleOperator(item.operator),
+        paramName: item.paramName || '',
+      }))
       : parsedField
-        ? [{ field: parsedField, paramName: 'taskId' }]
+        ? [{ field: parsedField, operator: '=', paramName: 'taskId' }]
         : [],
     relationField: isMain ? row.keyColumn || parsedField || 'id' : parsedField,
     relationTargetTable: row.relationTargetTable || mainTableName,
     relationTargetField: row.relationTargetField || '',
     advancedRule: Boolean(row.taskConditionTemplate) && !parsedField,
     taskConditionTemplate: row.taskConditionTemplate || '',
-    fileTable: Boolean(row.fileTable),
-    filePathValue: row.fileColumn || row.filePathTemplate || '',
-    fileNameColumn: row.fileNameColumn || '',
-    exportAttachments: row.exportAttachments !== false,
+    fileTable,
+    filePathValue,
+    filePathMode: filePathTemplate ? 'RELATIVE' : 'ABSOLUTE',
+    filePathPrefix: templateColumnMatch ? filePathTemplate.slice(0, templateColumnMatch.index) : filePathTemplate,
+    exportAttachments: fileTable,
     dependencyOrder: Number(row.dependencyOrder || 0),
   }
 }
@@ -240,7 +256,8 @@ function createScope(tableName = '') {
     taskConditionTemplate: '',
     fileTable: false,
     filePathValue: '',
-    fileNameColumn: '',
+    filePathMode: 'ABSOLUTE',
+    filePathPrefix: '',
     exportAttachments: true,
     dependencyOrder: profile.autoTaskTables.length * 10,
   }
@@ -272,6 +289,7 @@ function applyDataSource(source) {
   profile.dataSourceType = source?.type || ''
   profile.dataSourceName = source?.name || ''
   profile.dataSourceUrl = source?.url || ''
+  clearColumnCache()
   testResult.value = null
   loadSourceTables()
 }
@@ -309,6 +327,7 @@ function applyProfile(data = {}) {
   profile.detectTables = Array.isArray(data.detectTables) ? [...data.detectTables] : []
   profile.autoTaskTables = scopes.map((item) => toEditableScope(item, configuredMain))
   profile.backupTables = Array.isArray(data.backupTables) ? data.backupTables.map((item) => ({ ...item })) : []
+  clearColumnCache()
   syncMainMetadata()
   testResult.value = null
   currentStep.value = 1
@@ -320,7 +339,8 @@ function syncMainMetadata() {
   profile.autoTaskTables.forEach((item, index) => {
     item.relationTargetTable = profile.mainTableName
     item.relationTargetField = profile.mainKeyColumn
-    item.fileTable = item.contentType === 'ATTACHMENT'
+    item.contentType = item.fileTable ? 'ATTACHMENT' : 'DATA'
+    item.exportAttachments = item.fileTable
     item.dependencyOrder = index * 10
   })
   if (profile.mainTableName && !profile.detectTables.some((item) => sameName(item, profile.mainTableName))) {
@@ -333,22 +353,23 @@ function cleanScope(row) {
     ? row.taskConditionTemplate
     : generatedCondition(row)
   const pathValue = String(row.filePathValue || '').trim()
-  const directPathField = /^[A-Za-z_][A-Za-z0-9_]*$/.test(pathValue)
-  const fileTable = row.contentType === 'ATTACHMENT'
+  const fileTable = Boolean(row.fileTable)
+  const filePathTemplate = fileTable && row.filePathMode === 'RELATIVE' && pathValue
+    ? `${String(row.filePathPrefix || '')}${'${'}${pathValue}}`
+    : null
   return {
     tableName: row.tableName,
     keyColumn: row.keyColumn || 'id',
-    contentType: row.contentType || 'DATA',
+    contentType: fileTable ? 'ATTACHMENT' : 'DATA',
     queryRules: Array.isArray(row.queryRules) ? row.queryRules : [],
     relationField: row.queryRules?.[0]?.field || row.relationField || null,
     relationTargetTable: profile.mainTableName || null,
     relationTargetField: profile.mainKeyColumn || null,
     taskConditionTemplate,
-    fileTable: Boolean(fileTable && row.exportAttachments),
-    fileColumn: fileTable && row.exportAttachments && directPathField ? pathValue : null,
-    filePathTemplate: fileTable && row.exportAttachments && pathValue && !directPathField ? pathValue : null,
-    fileNameColumn: fileTable ? row.fileNameColumn || null : null,
-    exportAttachments: Boolean(fileTable && row.exportAttachments),
+    fileTable,
+    fileColumn: fileTable && pathValue ? pathValue : null,
+    filePathTemplate,
+    exportAttachments: fileTable,
     dependencyOrder: Number(row.dependencyOrder || 0),
   }
 }
@@ -441,13 +462,29 @@ async function loadSourceTables() {
 }
 
 async function loadTableColumns(tableName) {
-  if (!boundDataSource.value || !tableName || columnsByTable[tableName]) return
+  if (!boundDataSource.value || !tableName || columnsLoadingByTable[tableName]) return
+  if (Array.isArray(columnsByTable[tableName]) && columnsByTable[tableName].length) return
+  columnsLoadingByTable[tableName] = true
   try {
     const rows = await listColumns(boundDataSource.value, tableName)
     columnsByTable[tableName] = (Array.isArray(rows) ? rows : []).map(normalizeColumn).filter(Boolean)
   } catch {
-    columnsByTable[tableName] = []
+    delete columnsByTable[tableName]
+  } finally {
+    columnsLoadingByTable[tableName] = false
   }
+}
+
+function clearColumnCache() {
+  Object.keys(columnsByTable).forEach((tableName) => delete columnsByTable[tableName])
+  Object.keys(columnsLoadingByTable).forEach((tableName) => delete columnsLoadingByTable[tableName])
+}
+
+async function handleAttachmentChange(row, value) {
+  row.fileTable = value === true
+  row.contentType = row.fileTable ? 'ATTACHMENT' : 'DATA'
+  row.exportAttachments = row.fileTable
+  if (row.fileTable) await loadTableColumns(row.tableName)
 }
 
 async function handleMainTableChange(tableName) {
@@ -495,8 +532,9 @@ function removeConditionTable(index) {
   conditionTables.value.splice(index, 1)
 }
 
-function addFieldCondition(group) {
+async function addFieldCondition(group) {
   if (!group.conditions) group.conditions = []
+  if (group.table) await loadTableColumns(group.table)
   group.conditions.push(createLocatorParam({
     label: '',
     name: '',
@@ -520,7 +558,8 @@ function paramNameDuplicated(name) {
 
 function addQueryRule(row) {
   if (!row.queryRules) row.queryRules = []
-  row.queryRules.push({ field: '', paramName: availableParamNames.value[0] || '' })
+  row.advancedRule = false
+  row.queryRules.push({ field: '', operator: '=', paramName: availableParamNames.value[0] || '' })
 }
 
 function removeQueryRule(row, index) {
@@ -559,7 +598,10 @@ async function runLocatorTest() {
       conditions: locatorTestConditions(),
     })
     locatorTestResult.value = data
-    Message[data.success ? 'success' : 'error'](data.message || (data.success ? '定位成功' : '定位失败'))
+    const message = data.success
+      ? data.message || '定位成功'
+      : userFacingMessage(data.message, '定位失败，请检查组合条件和数据库模板')
+    Message[data.success ? 'success' : 'error'](message)
   } catch (error) {
     Message.error(error?.message || '测试定位失败')
   } finally {
@@ -599,7 +641,7 @@ async function addSelectedTables() {
     const matchedField = firstParam
       ? columns.find((item) => sameName(item, firstParam.field) || sameName(item, firstParam.name))
       : ''
-    row.queryRules = matchedField && firstParam ? [{ field: matchedField, paramName: firstParam.name }] : []
+    row.queryRules = matchedField && firstParam ? [{ field: matchedField, operator: '=', paramName: firstParam.name }] : []
     row.relationField = matchedField || ''
   }
   syncMainMetadata()
@@ -614,18 +656,6 @@ function removeRelatedTable(row) {
     relationPage.value,
     Math.max(1, Math.ceil(relatedScopes.value.length / relationPageSize)),
   )
-}
-
-function addBackupTable() {
-  profile.backupTables.push({
-    sourceTable: relatedScopes.value[0]?.tableName || '',
-    targetTable: '',
-    taskConditionTemplate: null,
-  })
-}
-
-function removeBackupTable(index) {
-  profile.backupTables.splice(index, 1)
 }
 
 async function loadProfiles(preferredName = activeProfileName.value) {
@@ -671,7 +701,7 @@ async function loadProfile(name) {
 
 function validateModel() {
   if (!profile.name.trim()) {
-    Message.warning('请填写模型名称')
+    Message.warning('请填写模板名称')
     currentStep.value = 1
     return false
   }
@@ -685,12 +715,27 @@ function validateModel() {
     return false
   }
   const invalidRelation = relatedScopes.value.find((item) =>
-    item.contentType !== 'DICTIONARY'
-    && !item.advancedRule
+    !item.advancedRule
     && !(item.queryRules || []).some((rule) => rule.field && rule.paramName),
   )
   if (invalidRelation) {
     Message.warning(`请为带出表 ${invalidRelation.tableName} 配置查询规则`)
+    currentStep.value = 3
+    return false
+  }
+  const invalidFileTable = relatedScopes.value.find((item) => item.fileTable && !String(item.filePathValue || '').trim())
+  if (invalidFileTable) {
+    Message.warning(`请为文件表 ${invalidFileTable.tableName} 选择文件路径字段`)
+    currentStep.value = 3
+    return false
+  }
+  const missingPathPrefix = relatedScopes.value.find((item) =>
+    item.fileTable
+    && item.filePathMode === 'RELATIVE'
+    && !String(item.filePathPrefix || '').trim(),
+  )
+  if (missingPathPrefix) {
+    Message.warning(`请为文件表 ${missingPathPrefix.tableName} 填写文件路径前缀`)
     currentStep.value = 3
     return false
   }
@@ -763,7 +808,7 @@ async function testCurrentProfile() {
 
 function nextStep() {
   if (currentStep.value === 1 && (!profile.name.trim() || !boundDataSource.value)) {
-    Message.warning('请先填写模型名称并选择适用数据源')
+    Message.warning('请先填写模板名称并选择适用数据源')
     return
   }
   if (currentStep.value === 2 && !validateLocatorRule()) return
@@ -897,7 +942,7 @@ onMounted(async () => {
         <a-steps :current="currentStep" class="model-wizard-steps" @change="(step) => currentStep = step">
           <a-step title="基本信息" description="说明模型用途" />
           <a-step title="设置组合条件" description="定义导出输入" />
-          <a-step title="配置带出内容" description="设置表和附件" />
+          <a-step title="配置关联条件" description="设置表和附件" />
           <a-step title="完整测试模板" description="验证完整链路" />
         </a-steps>
 
@@ -912,7 +957,7 @@ onMounted(async () => {
               <a-col :span="12">
                 <a-form-item>
                   <template #label>
-                    <FieldLabel label="模型名称" tip="面向业务人员的名称，例如：任务数据模型。" />
+                    <FieldLabel label="模板名称" tip="面向业务人员的名称，例如：任务数据模型。" />
                   </template>
                   <a-input v-model="profile.name" placeholder="例如：任务数据模型" />
                 </a-form-item>
@@ -950,7 +995,7 @@ onMounted(async () => {
         <section v-else-if="currentStep === 2" class="model-step-panel">
           <div class="step-title-row">
             <div>
-              <p>先定义导出、同步、备份时需要填写哪些业务条件。可以在一张条件表下配置多个字段，也可以配置多张条件表共同校验。</p>
+              <p>定义业务条件，可以在一张条件表下配置多个字段，也可以配置多张条件表共同校验。</p>
             </div>
             <a-button type="primary" @click="addConditionTable">新增条件表</a-button>
           </div>
@@ -964,18 +1009,18 @@ onMounted(async () => {
                 </a-space>
               </div>
               <a-form layout="vertical">
-                <a-form-item label="条件表">
                   <a-select v-model="group.table" allow-search :loading="loadingTables"
-                    placeholder="例如 zy_task、zy_model、zy_stage" @change="(value) => handleConditionTableChange(group, value)">
+                    placeholder="请下拉选择数据库表" @change="(value) => handleConditionTableChange(group, value)">
                     <a-option v-for="table in sourceTables" :key="table" :value="table">{{ table }}</a-option>
                   </a-select>
-                </a-form-item>
               </a-form>
               <a-table :data="group.conditions || []" :pagination="false" size="small" class="locator-param-table">
                 <template #columns>
                   <a-table-column title="对应字段" :width="180">
                     <template #cell="{ record }">
-                      <a-select v-model="record.field" allow-search allow-create placeholder="model_code">
+                      <a-select v-model="record.field" allow-search placeholder="请选择字段"
+                        :loading="columnsLoadingByTable[group.table]"
+                        @popup-visible-change="(visible) => visible && loadTableColumns(group.table)">
                         <a-option v-for="column in columnsByTable[group.table] || []" :key="column" :value="column">{{ column }}</a-option>
                       </a-select>
                     </template>
@@ -996,7 +1041,6 @@ onMounted(async () => {
             </article>
           </div>
           <div class="relationship-example main">
-            <span>测试查找</span>
             <strong>{{ locatorSummary }}</strong>
             <div class="model-test-bar">
               <a-input v-for="item in locatorParams" :key="item.name" v-model="locatorTestValues[item.name]"
@@ -1032,75 +1076,81 @@ onMounted(async () => {
         <section v-else-if="currentStep === 3" class="model-step-panel">
           <div class="step-title-row">
             <div>
-              <p>设置找到目标数据后要一起处理哪些普通数据表、附件数据表、日志表或公共字典表。</p>
+              <p>设置找到目标数据后要一起处理哪些业务表，以及哪些表需要同时导出附件。</p>
             </div>
-            <a-button type="primary" @click="openTablePicker">添加带出表</a-button>
+            <a-button type="primary" @click="openTablePicker">添加关联表</a-button>
           </div>
           <div class="locator-param-hints">
             <span>可用参数</span>
             <code v-for="name in availableParamNames" :key="name">{{ '${' + name + '}' }}</code>
           </div>
-          <a-empty v-if="relatedScopes.length === 0" description="暂无带出表，可先添加普通表、附件表、日志表或公共字典表。" />
+          <a-empty v-if="relatedScopes.length === 0" description="暂无关联表，请先添加需要处理的业务表。" />
           <div v-else class="relation-card-list">
             <article v-for="row in pagedRelatedScopes" :key="row.tableName" class="relation-card">
-              <header>
-                <div>
-                  <strong>{{ row.tableName }}</strong>
-                  <span>{{ contentTypeOptions.find((item) => item.value === row.contentType)?.label || '普通数据表' }}</span>
+              <header class="relation-card-heading">
+                <div class="relation-card-summary">
+                  <strong>表名：{{ row.tableName }}</strong>
+                  <span>附件配置</span>
+                  <a-switch :model-value="row.fileTable" checked-text="开启" unchecked-text="关闭"
+                    @change="(value) => handleAttachmentChange(row, value)" />
                 </div>
                 <a-button size="mini" status="danger" @click="removeRelatedTable(row)">删除</a-button>
               </header>
-              <a-form layout="vertical">
-                <a-row :gutter="14">
-                  <a-col :span="24">
-                    <a-form-item label="内容类型">
-                      <a-select v-model="row.contentType" @change="(value) => { row.fileTable = value === 'ATTACHMENT'; if (value === 'DICTIONARY') row.queryRules = [] }">
-                        <a-option v-for="item in contentTypeOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
-                      </a-select>
-                    </a-form-item>
-                  </a-col>
-                </a-row>
-              </a-form>
-              <div v-if="row.contentType !== 'DICTIONARY'" class="config-table-header">
-                <span>查询规则</span>
-                <a-button size="small" @click="addQueryRule(row)">新增规则</a-button>
-              </div>
-              <div v-if="row.contentType !== 'DICTIONARY'" class="locator-output-list">
-                <a-row v-for="(rule, index) in row.queryRules" :key="index" :gutter="12" class="locator-output-row">
-                  <a-col :span="10">
-                    <a-select v-model="rule.field" allow-search allow-create placeholder="当前表字段"
+              <div class="query-rule-table">
+                <div class="query-rule-header">
+                  <span>字段</span>
+                  <span>运算符</span>
+                  <span>参数</span>
+                  <div class="query-rule-operation-header">
+                    <span>操作</span>
+                  </div>
+                </div>
+                <div v-if="!row.queryRules.length" class="query-rule-empty">暂无查询规则，请在操作列新增。</div>
+                <div v-for="(rule, index) in row.queryRules" :key="index" class="query-rule-row">
+                  <div>
+                    <a-select v-model="rule.field" allow-search placeholder="当前表字段"
+                      :loading="columnsLoadingByTable[row.tableName]"
                       @popup-visible-change="(visible) => visible && loadTableColumns(row.tableName)">
                       <a-option v-for="column in columnsByTable[row.tableName] || []" :key="column" :value="column">{{ column }}</a-option>
                     </a-select>
-                  </a-col>
-                  <a-col :span="10">
+                  </div>
+                  <div>
+                    <a-select v-model="rule.operator" placeholder="运算符">
+                      <a-option v-for="item in queryOperatorOptions" :key="item.value" :value="item.value">{{ item.label }}</a-option>
+                    </a-select>
+                  </div>
+                  <div>
                     <a-select v-model="rule.paramName" placeholder="第 2 步参数">
                       <a-option v-for="name in availableParamNames" :key="name" :value="name">{{ '${' + name + '}' }}</a-option>
                     </a-select>
-                  </a-col>
-                  <a-col :span="4">
-                    <a-button status="danger" @click="removeQueryRule(row, index)">删除</a-button>
-                  </a-col>
-                </a-row>
+                  </div>
+                  <div class="query-rule-operation">
+                    <a-button size="mini" type="primary" @click="addQueryRule(row)">新增</a-button>
+                    <a-button size="mini" status="danger" @click="removeQueryRule(row, index)">删除</a-button>
+                  </div>
+                </div>
               </div>
-              <a-row v-if="row.contentType === 'ATTACHMENT'" :gutter="14">
+              <a-row v-if="row.fileTable" :gutter="14" class="attachment-path-config">
                 <a-col :span="8">
                   <a-form-item label="文件路径字段">
-                    <a-select v-model="row.filePathValue" allow-search allow-create placeholder="例如 FILE_PATH">
+                    <a-select v-model="row.filePathValue" allow-search placeholder="请选择路径字段"
+                      :loading="columnsLoadingByTable[row.tableName]"
+                      @popup-visible-change="(visible) => visible && loadTableColumns(row.tableName)">
                       <a-option v-for="column in columnsByTable[row.tableName] || []" :key="column" :value="column">{{ column }}</a-option>
                     </a-select>
                   </a-form-item>
                 </a-col>
                 <a-col :span="8">
-                  <a-form-item label="文件名字段">
-                    <a-select v-model="row.fileNameColumn" allow-search allow-clear placeholder="例如 FILE_NAME">
-                      <a-option v-for="column in columnsByTable[row.tableName] || []" :key="column" :value="column">{{ column }}</a-option>
-                    </a-select>
+                  <a-form-item label="数据库中的路径类型">
+                    <a-radio-group v-model="row.filePathMode" type="button">
+                      <a-radio value="ABSOLUTE">绝对路径</a-radio>
+                      <a-radio value="RELATIVE">相对路径</a-radio>
+                    </a-radio-group>
                   </a-form-item>
                 </a-col>
-                <a-col :span="8">
-                  <a-form-item label="随数据包导出">
-                    <a-switch v-model="row.exportAttachments" checked-text="是" unchecked-text="否" />
+                <a-col v-if="row.filePathMode === 'RELATIVE'" :span="8">
+                  <a-form-item label="文件路径前缀">
+                    <a-input v-model="row.filePathPrefix" placeholder="例如 D:/attachments/" />
                   </a-form-item>
                 </a-col>
               </a-row>
@@ -1112,25 +1162,6 @@ onMounted(async () => {
             <a-pagination v-if="relatedScopes.length > relationPageSize" v-model:current="relationPage"
               :total="relatedScopes.length" :page-size="relationPageSize" :show-total="true" />
           </div>
-          <a-collapse class="backup-collapse">
-            <a-collapse-item key="backup" header="高级设置：备份表映射">
-              <div class="config-table-header">
-                <span>备份时会沿用带出表的自动查询规则，无需填写 SQL 条件。</span>
-                <a-button size="small" @click="addBackupTable">添加备份映射</a-button>
-              </div>
-              <div v-for="(row, index) in profile.backupTables" :key="index" class="backup-map-row">
-                <a-select v-model="row.sourceTable" placeholder="源表">
-                  <a-option v-for="item in profile.autoTaskTables" :key="item.tableName" :value="item.tableName">{{
-                    item.tableName }}</a-option>
-                </a-select>
-                <span>备份到</span>
-                <a-select v-model="row.targetTable" allow-search allow-create placeholder="目标备份表">
-                  <a-option v-for="table in sourceTables" :key="table" :value="table">{{ table }}</a-option>
-                </a-select>
-                <a-button size="mini" status="danger" @click="removeBackupTable(index)">删除</a-button>
-              </div>
-            </a-collapse-item>
-          </a-collapse>
         </section>
 
         <section v-else class="model-step-panel">
@@ -1171,7 +1202,7 @@ onMounted(async () => {
         <a-form-item label="配置文件名">
           <a-input v-model="createProfileForm.fileName" placeholder="例如 task_data_model.json" />
         </a-form-item>
-        <a-form-item label="模型名称">
+        <a-form-item label="模板名称">
           <a-input v-model="createProfileForm.name" />
         </a-form-item>
         <a-form-item label="适用数据源">

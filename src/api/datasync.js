@@ -109,6 +109,48 @@ export async function previewBackup(payload) {
   return http.post('/datasync/backup-preview', payload)
 }
 
+export async function listBackupRecords() {
+  if (useMock) return simulate([])
+  return http.get('/datasync/backup-records')
+}
+
+export async function deleteBackupRecord(backupNo) {
+  if (useMock) return simulate({ success: true, message: '备份记录和备份包已删除', backupNo })
+  return http.post('/datasync/backup-delete', { backupNo }, { timeout: 60000 })
+}
+
+export async function precheckTaskCopy(payload) {
+  if (useMock) {
+    return simulate({ success: true, canCopy: true, checks: [
+      { name: '新任务ID', status: 'PASS', detail: '新任务ID可用' },
+      { name: '主键处理规则', status: 'PASS', detail: '所有表均可重新生成主键' },
+      { name: '附件目录', status: 'PASS', detail: '目录可写' },
+    ] })
+  }
+  return http.post('/datasync/task-copy-precheck', payload, { timeout: 60000 })
+}
+
+export async function createTaskCopy(payload) {
+  if (useMock) return simulate({ success: true, message: '任务副本创建完成', copyNo: `CP${Date.now()}`, recordCount: 19, tableCount: 3, attachmentCount: 3, details: [], primaryKeyMappings: [] })
+  return http.post('/datasync/task-copy', payload, { timeout: 300000 })
+}
+
+export async function listTaskCopyRecords() {
+  if (useMock) return simulate([])
+  return http.get('/datasync/task-copy-records')
+}
+
+export async function deleteTaskCopy(payload) {
+  if (useMock) return simulate({ success: true, message: '任务副本已删除', deletedTableCount: 3, deletedRecordCount: 19 })
+  return http.post('/datasync/task-copy-delete', payload, { timeout: 300000 })
+}
+
+export async function downloadPrimaryKeyMappings(copyNo) {
+  if (useMock) return new Blob(['[]'], { type: 'application/json' })
+  const { data } = await http.get('/datasync/task-copy/mappings', { params: { copyNo }, responseType: 'blob' })
+  return data
+}
+
 export async function inspectImportPackage(payload) {
   if (useMock) {
     return simulate({
