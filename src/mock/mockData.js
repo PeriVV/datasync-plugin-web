@@ -58,23 +58,49 @@ export function mockCompareResult(payload) {
         { tableName: 'zy_task', columns: ['id', 'task_id', 'name'] },
         { tableName: 'set_calc_param', columns: ['id', 'task_id', 'name'] },
       ]
-  const rows = tables.map((item, index) => ({
-    table: item.tableName || item.table || String(item),
-    sourceTable: item.tableName || item.table || String(item),
-    targetTable: item.targetTableName || item.tableName || item.table || String(item),
-    columns: item.columns || [],
-    sourceCount: index + 1,
-    targetCount: index === 0 ? index + 1 : index,
-    consistent: index === 0,
-    sourceOnlyKeys: index === 0 ? [] : [`${index + 100}`],
-    targetOnlyKeys: [],
-    changedKeys: index === 0 ? [] : [`${index + 200}`],
-    insertRecords: index === 0 ? 0 : 1,
-    updateRecords: index === 0 ? 0 : 1,
-    deleteRecords: 0,
-  }))
+  const rows = tables.map((item, index) => {
+    const table = item.tableName || item.table || String(item)
+    const columns = item.columns?.length ? item.columns : ['id', 'task_id', 'name']
+    const insertKey = `${index + 100}`
+    const updateKey = `${index + 200}`
+    const hasDiff = index !== 0
+    return {
+      table,
+      sourceTable: table,
+      targetTable: item.targetTableName || table,
+      columns,
+      keyColumns: item.keyColumns || ['id'],
+      sourceCount: index + 1,
+      targetCount: index === 0 ? index + 1 : index,
+      consistent: !hasDiff,
+      sourceOnlyKeys: hasDiff ? [insertKey] : [],
+      targetOnlyKeys: [],
+      changedKeys: hasDiff ? [updateKey] : [],
+      insertRecords: hasDiff ? 1 : 0,
+      updateRecords: hasDiff ? 1 : 0,
+      deleteRecords: 0,
+      details: {
+        inserts: hasDiff ? [{ key: insertKey, values: { id: insertKey, task_id: 'T-100', name: '源库新增记录' } }] : [],
+        updates: hasDiff ? [{
+          key: updateKey,
+          fields: columns.map((field) => ({
+            field,
+            sourceValue: field === 'name' ? '源库名称' : `${field}-${updateKey}`,
+            targetValue: field === 'name' ? '目标库名称' : `${field}-${updateKey}`,
+            changed: field === 'name',
+          })),
+        }] : [],
+        deletes: [],
+        insertTruncated: false,
+        updateTruncated: false,
+        deleteTruncated: false,
+        limit: 200,
+      },
+    }
+  })
   return {
     success: true,
+    comparedAt: new Date().toISOString(),
     summary: {
       totalTables: rows.length,
       consistentTables: rows.filter((item) => item.consistent).length,
@@ -88,10 +114,22 @@ export function mockCompareResult(payload) {
 }
 
 export function mockSyncResult(payload) {
-  const tableCount = Array.isArray(payload.tables) ? payload.tables.length : 0
-  const rowsInserted = Math.max(tableCount, 1)
-  const rowsUpdated = payload.syncPolicy === 'INSERT_ONLY' ? 0 : tableCount
-  const rowsDeleted = ['INSERT_UPDATE_DELETE', 'MIRROR'].includes(payload.syncPolicy) ? tableCount : 0
+  const tables = Array.isArray(payload.tables) ? payload.tables : []
+  const tableCount = tables.length
+  const rowsInserted = payload.syncInserts ? Math.max(tableCount, 1) : 0
+  const rowsUpdated = payload.syncUpdates ? tableCount : 0
+  const rowsDeleted = payload.deleteTargetOnly ? tableCount : 0
+  const operationDetails = tables.flatMap((item, index) => {
+    const table = item.tableName || item.table || String(item)
+    const details = []
+    const insertKey = `P${String(index + 2).padStart(3, '0')}`
+    const updateKey = `P${String(index + 1).padStart(3, '0')}`
+    const deleteKey = `P${String(index + 4).padStart(3, '0')}`
+    details.push({ table, key: insertKey, type: 'INSERT', status: payload.syncInserts ? 'SUCCESS' : 'SKIPPED', message: payload.syncInserts ? `${insertKey} 插入成功` : `${insertKey} 跳过插入，未开启新增同步`, changes: [] })
+    details.push({ table, key: updateKey, type: 'UPDATE', status: payload.syncUpdates ? 'SUCCESS' : 'SKIPPED', message: payload.syncUpdates ? `${updateKey} 更新成功` : `${updateKey} 跳过更新，未开启更新同步`, changes: [{ field: 'param_value', targetValue: 1000, sourceValue: 1200 }] })
+    details.push({ table, key: deleteKey, type: 'DELETE', status: payload.deleteTargetOnly ? 'SUCCESS' : 'SKIPPED', message: payload.deleteTargetOnly ? `${deleteKey} 删除成功` : `${deleteKey} 跳过删除，未开启删除同步`, changes: [] })
+    return details
+  })
   return {
     success: true,
     synced: true,
@@ -100,7 +138,9 @@ export function mockSyncResult(payload) {
     rowsUpdated,
     rowsWritten: rowsInserted + rowsUpdated,
     rowsDeleted,
-    tables: (payload.tables || []).map((item) => item.tableName || item.table || String(item)),
+    tables: tables.map((item) => item.tableName || item.table || String(item)),
+    operationDetails,
+    failedTables: [],
     phases: [
       { phase: '清理目标数据', status: rowsDeleted ? '已完成' : '已跳过', detail: `已删除 ${rowsDeleted} 行` },
       { phase: '写入同步数据', status: '已完成', detail: `已写入 ${rowsInserted + rowsUpdated} 行` },
