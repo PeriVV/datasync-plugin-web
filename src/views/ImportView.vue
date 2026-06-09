@@ -19,6 +19,7 @@ const packageInfo = ref(null)
 const precheckResult = ref(null)
 const precheckError = ref('')
 const importResult = ref(null)
+const importFailures = ref([])
 const selectedPackageFile = ref(null)
 
 const form = reactive({
@@ -60,6 +61,13 @@ const failureOptions = [
   { value: 'STOP', title: '失败即停止', description: '遇到一条失败数据或文件后立即停止，便于排查问题。' },
   { value: 'SKIP', title: '跳过并继续', description: '记录失败项并继续处理其余数据，适合批量导入。' },
 ]
+const importFailureColumns = [
+  { title: '失败阶段', dataIndex: 'phase', width: 120 },
+  { title: '失败表', dataIndex: 'table', width: 180 },
+  { title: '主键', dataIndex: 'key', width: 150 },
+  { title: '失败原因', dataIndex: 'reason' },
+  { title: '处理建议', dataIndex: 'suggestion' },
+]
 
 async function loadOptions() {
   booting.value = true
@@ -90,6 +98,7 @@ async function analyzePackage() {
     precheckResult.value = null
     precheckError.value = ''
     importResult.value = null
+    importFailures.value = []
     tablesExpanded.value = false
     Message.success(data?.message || '导入包识别完成')
     return true
@@ -107,6 +116,7 @@ function handlePackageChange(event) {
   precheckResult.value = null
   precheckError.value = ''
   importResult.value = null
+  importFailures.value = []
   selectedPackageFile.value = event?.files?.[0] || null
   if (selectedPackageFile.value || form.inputPath) analyzePackage()
 }
@@ -132,6 +142,7 @@ async function runPrecheck() {
   checking.value = true
   precheckResult.value = null
   precheckError.value = ''
+  importFailures.value = []
   try {
     const { data } = await precheckImport(targetPayload())
     precheckResult.value = data
@@ -169,6 +180,7 @@ async function submit() {
     return
   }
   loading.value = true
+  importFailures.value = []
   try {
     const { data } = await importData({
       ...targetPayload(),
@@ -176,11 +188,38 @@ async function submit() {
       failurePolicy: form.failurePolicy,
     })
     importResult.value = data
-    Message.success(data?.message || '导入完成')
+    importFailures.value = data?.failureDetails || []
+    Message[importFailures.value.length ? 'warning' : 'success'](data?.message || (importFailures.value.length ? '导入完成，但存在失败项' : '导入完成'))
   } catch (error) {
-    Message.error(error?.message || '执行导入失败')
+    const serverFailure = error?.response?.data?.failure
+    importFailures.value = [serverFailure || parseImportFailure(error?.message)]
+    Message.error(importFailures.value[0].reason || '执行导入失败')
   } finally {
     loading.value = false
+  }
+}
+
+function parseImportFailure(message) {
+  const text = String(message || '执行导入失败')
+  const table = text.match(/(?:写入表|写入|表)\s+([A-Za-z0-9_.]+)/i)?.[1] || '-'
+  const key = text.match(/(?:主键|key)\s*[=:：]?\s*['\"]?([A-Za-z0-9_.-]+)/i)?.[1] || '-'
+  const duplicate = /duplicate|主键冲突|已存在/i.test(text)
+  const packageFailure = /导入包|压缩包|解压|zip|manifest/i.test(text)
+  const attachmentFailure = /附件|文件复制|目录/i.test(text)
+  const phase = packageFailure ? '导入包解析' : attachmentFailure ? '附件恢复' : '数据库写入'
+  const suggestion = duplicate
+    ? '选择“更新已有数据”或更换主键后重新导入。'
+    : packageFailure
+      ? '检查导入包是否完整、格式是否正确后重新上传。'
+      : attachmentFailure
+        ? '检查附件目录权限、磁盘空间和文件完整性后重试。'
+        : '检查目标表结构、字段类型和约束后重试。'
+  return {
+    phase,
+    table,
+    key,
+    reason: text,
+    suggestion,
   }
 }
 
@@ -188,6 +227,7 @@ watch(() => form.targetId, () => {
   precheckResult.value = null
   precheckError.value = ''
   importResult.value = null
+  importFailures.value = []
   if (currentStep.value === 2 && selectedTarget.value && packageInfo.value) runPrecheck()
 })
 
@@ -402,6 +442,11 @@ onMounted(loadOptions)
             <article><span>附件跳过</span><strong>{{ importResult.filesSkipped || 0 }}</strong></article>
           </div>
         </template>
+        <section v-if="importFailures.length" class="execution-result failure-result">
+          <div class="execution-result-heading"><div><strong>数据导入失败</strong><span>本次导入未完整完成，请根据失败明细处理后重试。</span></div><a-tag color="red">失败</a-tag></div>
+          <a-table :columns="importFailureColumns" :data="importFailures" :pagination="importFailures.length > 5 ? { pageSize: 5 } : false" size="small" />
+          <div class="result-actions"><a-button @click="currentStep = 2">返回预检查</a-button><a-button type="primary" @click="submit">重新执行导入</a-button></div>
+        </section>
       </section>
 
       <footer class="model-wizard-footer">

@@ -9,6 +9,7 @@ import {
   createTaskCopy,
   deleteBackupRecord,
   deleteTaskCopy,
+  downloadBackupPackage,
   downloadPrimaryKeyMappings,
   listBackupRecords,
   listTaskCopyRecords,
@@ -21,7 +22,8 @@ const step = ref(1)
 const booting = ref(false)
 const previewing = ref(false)
 const backingUp = ref(false)
-const copyLoading = ref(false)
+const copyPrechecking = ref(false)
+const copyCreating = ref(false)
 const profiles = ref([])
 const sources = ref([])
 const databaseTables = ref([])
@@ -39,6 +41,7 @@ const copyResult = ref(null)
 const copyProgress = ref('')
 const deletingCopyNo = ref('')
 const deletingBackupNo = ref('')
+const backupDetailsExpanded = ref(false)
 
 const form = reactive({
   profile: '',
@@ -53,8 +56,12 @@ const copyForm = reactive({ sourceTaskId: '', newTaskId: '', attachmentPolicy: '
 
 const selectedProfile = computed(() => profiles.value.find((item) => item.name === form.profile) || null)
 const selectedSource = computed(() => sources.value.find((item) => String(item.id) === String(form.sourceId)) || null)
-const relatedTableNames = computed(() => new Set((selectedProfile.value?.definition?.autoTaskTables || []).map((item) => item.tableName)))
-const commonTableOptions = computed(() => databaseTables.value.filter((item) => !relatedTableNames.value.has(tableName(item))))
+const commonTableOptions = computed(() => databaseTables.value)
+const visibleCopyChecks = computed(() => (precheckResult.value?.checks || []).filter((item) => item.status !== 'PASS'))
+const visibleBackupDetails = computed(() => {
+  const details = backupResult.value?.details || []
+  return backupDetailsExpanded.value ? details : details.slice(0, 5)
+})
 const locatorParams = computed(() => {
   const params = selectedProfile.value?.definition?.locatorRule?.params
   return Array.isArray(params) && params.length ? params : [{ name: 'taskId', label: '任务ID' }]
@@ -96,6 +103,12 @@ const detailColumns = [
   { title: '附件数量', dataIndex: 'attachmentCount', width: 110 },
   { title: '状态', slotName: 'status', width: 100 },
 ]
+const backupResultColumns = [
+  { title: '表名', dataIndex: 'tableName' },
+  { title: '记录数', dataIndex: 'recordCount', width: 110 },
+  { title: '附件数', dataIndex: 'attachmentCount', width: 110 },
+  { title: '状态', slotName: 'status', width: 100 },
+]
 
 const mappingColumns = [
   { title: '表名', dataIndex: 'tableName' },
@@ -106,7 +119,15 @@ const mappingColumns = [
 ]
 
 function tableName(item) {
-  return item?.tableName || item?.name || String(item || '')
+  return item?.tableName || item?.tablename || item?.TABLE_NAME || item?.table || item?.name || String(item || '')
+}
+
+function normalizeTableList(rows) {
+  return [...new Set(
+    (Array.isArray(rows) ? rows : [])
+      .map((item) => String(tableName(item) || '').trim())
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right, 'zh-CN'))
 }
 
 function formatDateTime(value) {
@@ -222,7 +243,11 @@ async function applyProfile() {
   form.commonTables = []
   databaseTables.value = []
   if (selectedSource.value) {
-    try { databaseTables.value = await listTables(selectedSource.value) } catch { databaseTables.value = [] }
+    try {
+      databaseTables.value = normalizeTableList(await listTables(selectedSource.value))
+    } catch {
+      databaseTables.value = []
+    }
   }
   resetResult()
 }
@@ -267,6 +292,7 @@ function startBackup() {
       try {
         const { data } = await backupData(payload())
         backupResult.value = data
+        backupDetailsExpanded.value = false
         Message.success(data?.message || '业务数据备份完成')
         try {
           await loadRecords()
@@ -278,6 +304,23 @@ function startBackup() {
       }
     },
   })
+}
+
+async function downloadBackup(record) {
+  if (!record?.backupNo) return
+  try {
+    const blob = await downloadBackupPackage(record.backupNo)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${record.backupNo}.zip`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    Message.error(error?.message || '下载备份包失败')
+  }
 }
 
 async function loadRecords() {
@@ -339,9 +382,10 @@ function copyRecordPayload(record) {
 async function runCopyPrecheck() {
   if (!copyForm.sourceTaskId.trim()) return Message.warning('请输入源任务ID')
   if (!copyForm.newTaskId.trim()) return Message.warning('请输入新的任务ID')
-  copyLoading.value = true
+  copyPrechecking.value = true
   copyProgress.value = '正在连接数据库并检查新任务ID、主键规则、唯一字段和附件目录，请稍候...'
   Message.info('正在执行任务副本预检查')
+  const startedAt = performance.now()
   try {
     const { data } = await precheckTaskCopy(copyPayload({
       backupNo: copySource.value.backupNo,
@@ -349,6 +393,7 @@ async function runCopyPrecheck() {
       newTaskId: copyForm.newTaskId.trim(),
       attachmentPolicy: copyForm.attachmentPolicy,
     }))
+    console.info(`[task-copy-web] precheck returned in ${Math.round(performance.now() - startedAt)} ms`, data)
     precheckResult.value = data
     if (data.canCopy && data.skipAttachmentTables) {
       copyProgress.value = '业务数据预检查已通过；附件不可复制，创建时将自动跳过附件表。'
@@ -358,18 +403,20 @@ async function runCopyPrecheck() {
       Message[data.canCopy ? 'success' : 'warning'](data.canCopy ? '预检查通过' : '预检查未通过')
     }
   } catch (error) {
+    console.warn(`[task-copy-web] precheck failed in ${Math.round(performance.now() - startedAt)} ms`, error)
     copyProgress.value = `预检查失败：${error?.message || '服务未返回结果'}`
     Message.error(copyProgress.value)
   } finally {
-    copyLoading.value = false
+    copyPrechecking.value = false
   }
 }
 
 async function executeCopy() {
   if (!copyForm.sourceTaskId.trim()) return Message.warning('请输入源任务ID')
   if (!copyForm.newTaskId.trim()) return Message.warning('请输入新的任务ID')
-  copyLoading.value = true
+  copyCreating.value = true
   let phase = 'precheck'
+  const startedAt = performance.now()
   try {
     if (!precheckResult.value) {
       copyProgress.value = '正在执行创建前预检查，检查通过后才会写入数据库...'
@@ -380,6 +427,7 @@ async function executeCopy() {
         newTaskId: copyForm.newTaskId.trim(),
         attachmentPolicy: copyForm.attachmentPolicy,
       }))
+      console.info(`[task-copy-web] create precheck returned in ${Math.round(performance.now() - startedAt)} ms`, checked)
       precheckResult.value = checked
     }
     if (!precheckResult.value.canCopy) {
@@ -398,6 +446,7 @@ async function executeCopy() {
       newTaskId: copyForm.newTaskId.trim(),
       attachmentPolicy: copyForm.attachmentPolicy,
     }))
+    console.info(`[task-copy-web] create returned in ${Math.round(performance.now() - startedAt)} ms`, data)
     copyResult.value = data
     copyProgress.value = data.attachmentTablesSkipped
       ? `任务副本创建完成，共写入 ${data.recordCount || 0} 条业务记录；附件表已跳过。`
@@ -409,10 +458,11 @@ async function executeCopy() {
       Message.warning(`任务副本已创建成功，但列表刷新失败：${refreshError?.message || '请手动刷新页面'}`)
     }
   } catch (error) {
+    console.warn(`[task-copy-web] ${phase} failed in ${Math.round(performance.now() - startedAt)} ms`, error)
     copyProgress.value = `${phase === 'precheck' ? '预检查' : '任务副本创建'}失败：${error?.message || '服务未返回结果'}`
     Message.error(copyProgress.value)
   } finally {
-    copyLoading.value = false
+    copyCreating.value = false
   }
 }
 
@@ -513,11 +563,11 @@ onMounted(loadOptions)
               <template v-if="form.scopeMode === 'CONDITION'">
                 <a-divider orientation="left">组合条件</a-divider>
                 <a-row :gutter="16"><a-col v-for="param in locatorParams" :key="param.name" :span="12"><a-form-item :label="param.label || param.name"><a-input v-model="form.locatorValues[param.name]" :placeholder="`请输入${param.label || param.name}`" /></a-form-item></a-col></a-row>
-                <a-form-item label="本次额外备份的公共表">
-                  <a-select v-model="form.commonTables" multiple allow-search placeholder="选择字典表、配置表等；所选表将整表备份">
-                    <a-option v-for="item in commonTableOptions" :key="tableName(item)" :value="tableName(item)">{{ tableName(item) }}</a-option>
-                  </a-select>
-                </a-form-item>
+              <a-form-item label="本次额外备份的公共表">
+                <a-select v-model="form.commonTables" multiple allow-search placeholder="从当前数据源中选择任意表；所选表将整表备份">
+                  <a-option v-for="item in commonTableOptions" :key="tableName(item)" :value="tableName(item)">{{ tableName(item) }}</a-option>
+                </a-select>
+              </a-form-item>
               </template>
               <a-form-item label="是否备份附件"><a-switch v-model="form.includeAttachments" /></a-form-item>
             </a-form>
@@ -536,9 +586,22 @@ onMounted(loadOptions)
           <section v-else class="panel">
             <div class="execute-summary"><p>范围：{{ form.scopeMode === 'FULL_DATABASE' ? '全库备份' : '按组合条件备份' }}</p><p>共 {{ previewResult?.tableCount || 0 }} 张表，{{ previewResult?.recordCount || 0 }} 条记录，{{ previewResult?.attachmentCount || 0 }} 个附件</p></div>
             <div class="center"><a-button type="primary" size="large" :loading="backingUp" @click="startBackup">开始备份</a-button></div>
-            <a-result v-if="backupResult" status="success" title="业务数据备份完成" :subtitle="`备份编号 ${backupResult.backupNo}，备份包：${backupResult.packagePath}`">
-              <template #extra><a-space><a-button @click="showDetail(backupResult, 'backup')">查看详情</a-button><a-button type="primary" @click="openCopy(backupResult)">创建任务副本</a-button></a-space></template>
-            </a-result>
+            <section v-if="backupResult" class="execution-result">
+              <div class="execution-result-heading"><div><strong>业务数据备份完成</strong><span>备份包已生成，可查看表级结果或创建任务副本。</span></div><a-tag color="green">成功</a-tag></div>
+              <a-descriptions :column="2" bordered size="small" class="result-descriptions">
+                <a-descriptions-item label="备份编号">{{ backupResult.backupNo }}</a-descriptions-item>
+                <a-descriptions-item label="数据库模板">{{ profileDisplayName(backupResult) }}</a-descriptions-item>
+                <a-descriptions-item label="备份范围">{{ scopeDisplay(backupResult.scopeMode) }}</a-descriptions-item>
+                <a-descriptions-item label="组合条件">{{ conditionDisplay(backupResult.conditions) }}</a-descriptions-item>
+                <a-descriptions-item label="备份表数量">{{ backupResult.tableCount || 0 }}</a-descriptions-item>
+                <a-descriptions-item label="记录数量">{{ backupResult.recordCount || 0 }}</a-descriptions-item>
+                <a-descriptions-item label="附件数量">{{ backupResult.attachmentCount || 0 }}</a-descriptions-item>
+                <a-descriptions-item label="备份包路径"><a-tooltip :content="backupResult.packagePath"><span class="result-path">{{ backupResult.packagePath }}</span></a-tooltip></a-descriptions-item>
+              </a-descriptions>
+              <div class="result-section-heading"><strong>表级备份结果</strong><a-button v-if="(backupResult.details || []).length > 5" type="text" @click="backupDetailsExpanded = !backupDetailsExpanded">{{ backupDetailsExpanded ? '收起' : `查看全部（${backupResult.details.length}）` }}</a-button></div>
+              <a-table :columns="backupResultColumns" :data="visibleBackupDetails" :pagination="false" size="small"><template #status="{ record }"><a-tag color="green">{{ statusDisplay(record.status) }}</a-tag></template></a-table>
+              <div class="result-actions"><a-button @click="showDetail(backupResult, 'backup')">查看明细</a-button><a-button @click="downloadBackup(backupResult)">下载备份包</a-button><a-button type="primary" @click="openCopy(backupResult)">基于备份创建副本</a-button></div>
+            </section>
           </section>
 
           <footer class="wizard-footer"><a-button :disabled="step === 1" @click="step--">上一步</a-button><span>第 {{ step }} / 3 步</span><a-button v-if="step < 3" type="primary" @click="nextStep">下一步</a-button></footer>
@@ -583,9 +646,9 @@ onMounted(loadOptions)
         <a-form-item label="新的任务ID"><a-input v-model="copyForm.newTaskId" placeholder="请输入新的任务ID，例如 newTaskId" /></a-form-item>
         <a-form-item label="附件策略"><a-radio-group v-model="copyForm.attachmentPolicy"><a-radio value="NONE">不复制附件</a-radio><a-radio value="REFERENCE">引用源附件</a-radio><a-radio value="DEEP_COPY">深拷贝附件</a-radio></a-radio-group></a-form-item>
       </a-form>
-      <a-space><a-button :loading="copyLoading" @click="runCopyPrecheck">{{ precheckResult ? '重新预检查' : '执行预检查' }}</a-button><a-button type="primary" :loading="copyLoading" @click="executeCopy">创建任务副本</a-button></a-space>
+      <a-space><a-button :loading="copyPrechecking" :disabled="copyCreating" @click="runCopyPrecheck">{{ precheckResult ? '重新预检查' : '执行预检查' }}</a-button><a-button type="primary" :loading="copyCreating" :disabled="copyPrechecking" @click="executeCopy">创建任务副本</a-button></a-space>
       <a-alert v-if="copyProgress" class="copy-progress" :type="copyResult || precheckResult?.canCopy ? 'success' : precheckResult ? 'warning' : 'info'">{{ copyProgress }}</a-alert>
-      <div v-if="precheckResult" class="checks"><article v-for="item in precheckResult.checks" :key="item.name"><a-tag :color="item.status === 'PASS' ? 'green' : item.status === 'WARNING' ? 'orange' : 'red'">{{ statusDisplay(item.status) }}</a-tag><strong>{{ item.name }}</strong><span>{{ item.detail }}</span></article></div>
+      <div v-if="visibleCopyChecks.length" class="checks"><article v-for="item in visibleCopyChecks" :key="item.name"><a-tag :color="item.status === 'WARNING' ? 'orange' : 'red'">{{ statusDisplay(item.status) }}</a-tag><strong>{{ item.name }}</strong><span>{{ item.detail }}</span></article></div>
       <template v-if="copyResult">
         <a-result status="success" title="任务副本创建完成" :subtitle="copyResult.attachmentTablesSkipped
           ? `副本编号 ${copyResult.copyNo}，写入 ${copyResult.tableCount || 0} 张业务表、${copyResult.recordCount || 0} 条记录；附件表已跳过`

@@ -973,17 +973,28 @@ textarea {
 }
 
 .page-hero {
-  padding: 16px 20px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 440px);
-  gap: 16px;
-  align-items: center;
+  padding: 14px 20px;
 }
 
 .page-hero h2 {
   margin: 0 0 6px;
   color: var(--text);
   font-size: 20px;
+}
+
+.page-hero-help {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  margin-left: 7px;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  vertical-align: 2px;
+  cursor: help;
 }
 
 .page-hero p {
@@ -1382,15 +1393,86 @@ textarea {
 }
 
 .model-wizard-steps {
-  margin: 4px 0 24px;
+  margin: 0 0 12px;
 }
 
 .model-step-panel {
-  min-height: 430px;
-  padding: 20px;
+  min-height: 360px;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fbfcff;
+}
+
+.operation-page {
+  font-size: 14px;
+}
+
+.operation-page .arco-table,
+.operation-page .arco-form,
+.operation-page .arco-alert,
+.operation-page .arco-descriptions,
+.operation-page .arco-tag,
+.operation-page .arco-btn,
+.operation-page small {
+  font-size: 13px;
+}
+
+.execution-result {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.execution-result-heading,
+.result-section-heading,
+.result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.execution-result-heading {
+  margin-bottom: 16px;
+}
+
+.execution-result-heading strong,
+.execution-result-heading span {
+  display: block;
+}
+
+.execution-result-heading strong {
+  font-size: 17px;
+}
+
+.execution-result-heading span {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.result-section-heading {
+  margin: 18px 0 10px;
+}
+
+.result-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.result-path {
+  display: inline-block;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.failure-result {
+  border-color: #f1c7cd;
 }
 
 .model-step-panel .step-title-row {

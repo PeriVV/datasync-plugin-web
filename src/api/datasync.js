@@ -119,6 +119,15 @@ export async function deleteBackupRecord(backupNo) {
   return http.post('/datasync/backup-delete', { backupNo }, { timeout: 60000 })
 }
 
+export async function downloadBackupPackage(backupNo) {
+  if (useMock) return new Blob(['mock backup package'], { type: 'application/zip' })
+  const { data } = await http.get('/datasync/backup-download', {
+    params: { backupNo },
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function precheckTaskCopy(payload) {
   if (useMock) {
     return simulate({ success: true, canCopy: true, checks: [

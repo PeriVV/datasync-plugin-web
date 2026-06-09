@@ -1192,7 +1192,6 @@ onMounted(async () => {
           <a-button :disabled="currentStep === 1" @click="previousStep">上一步</a-button>
           <span>第 {{ currentStep }} / 4 步</span>
           <a-button v-if="currentStep < 4" type="primary" @click="nextStep">下一步</a-button>
-          <a-button v-else type="primary" :loading="saving" @click="saveCurrentProfile">保存模型</a-button>
         </footer>
       </a-card>
     </div>

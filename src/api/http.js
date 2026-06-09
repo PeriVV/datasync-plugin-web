@@ -33,7 +33,9 @@ function friendlyErrorMessage(error) {
   }
   const status = Number(error.response.status || 0)
   const serverMessage = responseMessage(error.response.data)
-  if (status >= 500) return '服务处理失败，请稍后重试或联系管理员'
+  if (status >= 500) {
+    return serverMessage || '服务处理失败，请稍后重试或联系管理员'
+  }
   if (status === 400) {
     return userFacingMessage(serverMessage, '请求内容不正确，请检查必填字段和相关配置')
   }

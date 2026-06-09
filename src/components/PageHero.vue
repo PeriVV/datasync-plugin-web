@@ -18,11 +18,13 @@ defineProps({
 <template>
   <section class="page-hero">
     <div>
-      <h2>{{ title }}</h2>
+      <h2>
+        {{ title }}
+        <a-tooltip v-if="hint" :content="hint">
+          <span class="page-hero-help">?</span>
+        </a-tooltip>
+      </h2>
       <p>{{ description }}</p>
     </div>
-    <a-alert v-if="hint" class="page-hero-hint" type="info" :show-icon="true">
-      {{ hint }}
-    </a-alert>
   </section>
 </template>

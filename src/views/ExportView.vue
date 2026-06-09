@@ -50,12 +50,7 @@ const locatorParams = computed(() => {
   if (Array.isArray(params) && params.length) return params
   return [{ label: businessIdentifierName.value, name: 'taskId', required: true }]
 })
-const modelTableNames = computed(() =>
-  new Set((selectedProfile.value?.autoTaskTables || []).map((item) => String(item.tableName).toLowerCase())),
-)
-const availablePublicTables = computed(() =>
-  sourceTables.value.filter((table) => !modelTableNames.value.has(String(table).toLowerCase())),
-)
+const availablePublicTables = computed(() => sourceTables.value)
 const previewColumns = [
   { title: '数据表', dataIndex: 'tableName', width: 240 },
   { title: '查询范围', dataIndex: 'condition' },
@@ -72,7 +67,16 @@ const packageContentColumns = [
 ]
 
 function normalizeTable(row) {
-  return row?.tableName || row?.TABLE_NAME || row?.name || Object.values(row || {})[0] || ''
+  return row?.tableName || row?.tablename || row?.TABLE_NAME || row?.table || row?.name || Object.values(row || {})[0] || ''
+}
+
+function normalizeTableList(rows) {
+  return [...new Set(
+    (Array.isArray(rows) ? rows : [])
+      .map(normalizeTable)
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right, 'zh-CN'))
 }
 
 function splitValues(value) {
@@ -211,7 +215,7 @@ async function loadSourceTables() {
   sourceTables.value = []
   if (!selectedSource.value) return
   const rows = await listTables(selectedSource.value)
-  sourceTables.value = (Array.isArray(rows) ? rows : []).map(normalizeTable).filter(Boolean)
+  sourceTables.value = normalizeTableList(rows)
 }
 
 async function loadSelectedProfile() {
@@ -439,7 +443,7 @@ onMounted(loadOptions)
         <a-form layout="vertical" class="export-extra-options">
           <a-form-item v-if="!isFullDatabase">
             <template #label>
-              <FieldLabel label="本次额外导出的公共表" tip="公共表不与主表关联，将按整表导出。选择只影响本次导出。" />
+              <FieldLabel label="本次额外导出的公共表" tip="这里显示当前数据源中的全部表；选择后将按整表导出，仅影响本次导出。" />
             </template>
             <a-select v-model="form.publicTables" multiple allow-search allow-clear :max-tag-count="5"
               placeholder="按需选择字典表、配置表等公共表">
